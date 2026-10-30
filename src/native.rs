@@ -30,6 +30,7 @@ const WAKE: u32 = WM_APP + 1;
 const TRAY: u32 = WM_APP + 2;
 pub enum Command {
     Capture,
+    FullCapture,
     History,
     CopyPaste(image::RgbaImage),
     Notify(String),
@@ -96,8 +97,60 @@ pub fn fatal(message: &str) {
 
 struct Selection {
     desktop: capture::Desktop,
+    paint: PaintBuffer,
     anchor: Option<POINT>,
     current: POINT,
+}
+
+/// Reused, selection-lifetime GDI back buffer; nothing is allocated while idle.
+struct PaintBuffer {
+    dc: HDC,
+    bitmap: HBITMAP,
+    previous: HGDIOBJ,
+}
+impl PaintBuffer {
+    fn new(width: i32, height: i32) -> Result<Self> {
+        // SAFETY: all objects are created, selected, and destroyed on the native
+        // message-loop thread. Restore the original bitmap before deleting ours.
+        unsafe {
+            let screen = GetDC(None);
+            if screen.is_invalid() {
+                bail!("Could not access selection display");
+            }
+            let dc = CreateCompatibleDC(Some(screen));
+            if dc.is_invalid() {
+                ReleaseDC(None, screen);
+                bail!("Could not create selection buffer");
+            }
+            let bitmap = CreateCompatibleBitmap(screen, width, height);
+            ReleaseDC(None, screen);
+            if bitmap.is_invalid() {
+                let _ = DeleteDC(dc);
+                bail!("Could not allocate selection buffer");
+            }
+            let previous = SelectObject(dc, bitmap.into());
+            Ok(Self {
+                dc,
+                bitmap,
+                previous,
+            })
+        }
+    }
+}
+impl Drop for PaintBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.previous);
+            let _ = DeleteObject(self.bitmap.into());
+            let _ = DeleteDC(self.dc);
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CaptureKind {
+    Region,
+    Full,
 }
 struct State {
     owner: HWND,
@@ -107,6 +160,7 @@ struct State {
     store: mpsc::Sender<StoreCommand>,
     commands: mpsc::Receiver<Command>,
     selection: Option<Selection>,
+    capture_request: Option<CaptureKind>,
     target: HWND,
     pending_paste: Option<(Instant, HWND)>,
     foreground_hook: HWINEVENTHOOK,
@@ -139,12 +193,12 @@ pub fn start(
                 let icon = make_icon()?;
                 let taskbar_created = RegisterWindowMessageW(w!("TaskbarCreated"));
                 STATE.with(|s| *s.borrow_mut() = Some(State { owner, overlay: HWND::default(), icon, ui, store, commands: rx,
-                    selection: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences }));
+                    selection: None, capture_request: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences }));
                 let hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND,None,Some(foreground_changed),0,0,WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
                 STATE.with(|s| s.borrow_mut().as_mut().unwrap().foreground_hook = hook);
                 if hook.is_invalid() { notify("Live focus tracking is unavailable. Focus your destination before opening History."); }
                 add_tray(owner, icon)?;
-                for (id,key,modifiers,label) in [(1,0x53,MOD_ALT | MOD_SHIFT,"Alt+Shift+S"),(2,0x56,MOD_ALT | MOD_SHIFT,"Alt+Shift+V")] {
+                for (id,key,modifiers,label) in [(1,0x53,MOD_ALT | MOD_SHIFT,"Alt+Shift+S"),(2,0x56,MOD_ALT | MOD_SHIFT,"Alt+Shift+V"),(3,0x46,MOD_ALT | MOD_SHIFT,"Alt+Shift+F")] {
                     if RegisterHotKey(Some(owner), id, modifiers | MOD_NOREPEAT, key).is_err() {
                         notify(&format!("{label} is already in use. Capture and history remain available from the tray."));
                     }
@@ -161,6 +215,7 @@ pub fn start(
             if let Some(state) = state {
                 if !state.foreground_hook.is_invalid() { let _ = UnhookWinEvent(state.foreground_hook); }
                 let _ = UnregisterHotKey(Some(state.owner),1); let _ = UnregisterHotKey(Some(state.owner),2);
+                let _ = UnregisterHotKey(Some(state.owner),3);
                 let mut data = NOTIFYICONDATAW { cbSize: size_of::<NOTIFYICONDATAW>() as u32, hWnd: state.owner, uID: 1, ..Default::default() };
                 let _ = Shell_NotifyIconW(NIM_DELETE, &mut data);
                 let _ = DestroyWindow(state.owner); let _ = DestroyIcon(state.icon);
@@ -315,13 +370,22 @@ fn show_history() {
 }
 
 fn begin_capture() {
+    prepare_capture(CaptureKind::Region);
+}
+
+fn prepare_capture(kind: CaptureKind) {
     if restarting() {
         return;
     }
-    if STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.selection.is_some())) {
+    if STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .is_some_and(|s| s.selection.is_some() || s.capture_request.is_some())
+    }) {
         return;
     }
     remember_target();
+    STATE.with(|s| s.borrow_mut().as_mut().unwrap().capture_request = Some(kind));
     // Hide Slint first on its owning thread; queue capture only once hidden.
     STATE.with(|s| {
         if let Some(s) = s.borrow().as_ref() {
@@ -360,11 +424,19 @@ fn create_selection() -> Result<()> {
             desktop.pixels.width() as i32,
             desktop.pixels.height() as i32,
         );
+        let mut cursor = POINT::default();
+        let _ = GetCursorPos(&mut cursor);
+        let current = POINT {
+            x: (cursor.x - left).clamp(0, w - 1),
+            y: (cursor.y - top).clamp(0, h - 1),
+        };
+        let paint = PaintBuffer::new(w, h)?;
         STATE.with(|s| {
             s.borrow_mut().as_mut().unwrap().selection = Some(Selection {
                 desktop,
+                paint,
                 anchor: None,
-                current: POINT::default(),
+                current,
             })
         });
         let hwnd = CreateWindowExW(
@@ -385,6 +457,23 @@ fn create_selection() -> Result<()> {
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = SetForegroundWindow(hwnd);
     }
+    Ok(())
+}
+
+fn full_screenshot() -> Result<()> {
+    // The same hide/compositor step as region capture runs before this function.
+    unsafe {
+        let _ = DwmFlush();
+    }
+    let pixels = capture::desktop()?.pixels;
+    let (owner, store) = STATE.with(|s| {
+        let s = s.borrow();
+        let s = s.as_ref().unwrap();
+        (s.owner, s.store.clone())
+    });
+    let copied = clipboard::copy(owner, &pixels);
+    store.send(StoreCommand::Save(pixels))?;
+    copied?;
     Ok(())
 }
 
@@ -534,6 +623,7 @@ unsafe extern "system" fn procedure(
                         .with(|s| s.borrow().as_ref().and_then(|s| s.commands.try_recv().ok()));
                     match command {
                         Some(Command::Capture) => begin_capture(),
+                        Some(Command::FullCapture) => prepare_capture(CaptureKind::Full),
                         Some(Command::History) => show_history(),
                         Some(Command::CopyPaste(pixels)) => copy_paste(pixels),
                         Some(Command::Notify(text)) => notify(&text),
@@ -590,10 +680,11 @@ unsafe extern "system" fn procedure(
                 return LRESULT(0);
             }
             WM_HOTKEY => {
-                if wparam.0 == 1 {
-                    begin_capture();
-                } else {
-                    show_history();
+                match wparam.0 {
+                    1 => begin_capture(),
+                    2 => show_history(),
+                    3 => prepare_capture(CaptureKind::Full),
+                    _ => {}
                 }
                 return LRESULT(0);
             }
@@ -605,7 +696,14 @@ unsafe extern "system" fn procedure(
             }
             WM_TIMER if wparam.0 == 2 => {
                 let _ = KillTimer(Some(hwnd), 2);
-                if let Err(error) = create_selection() {
+                let request =
+                    STATE.with(|s| s.borrow_mut().as_mut().unwrap().capture_request.take());
+                let result = match request {
+                    Some(CaptureKind::Region) => create_selection(),
+                    Some(CaptureKind::Full) => full_screenshot(),
+                    None => Ok(()),
+                };
+                if let Err(error) = result {
                     STATE.with(|s| s.borrow_mut().as_mut().unwrap().selection = None);
                     notify(&format!("Capture failed: {error:#}"));
                 }
@@ -647,7 +745,7 @@ unsafe extern "system" fn procedure(
             TRAY => {
                 let event = lparam.0 as u32 & 0xffff;
                 if event == WM_LBUTTONUP || event == NIN_SELECT || event == (NIN_SELECT | 1) {
-                    show_history();
+                    begin_capture();
                 } else if event == WM_RBUTTONUP || event == WM_CONTEXTMENU {
                     tray_menu(hwnd);
                 }
@@ -753,7 +851,7 @@ pub fn show_tray_menu(menu: &crate::TrayMenu) {
         let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
         let scale = dpi_x as f32 / 96.;
         let width = (282. * scale) as i32;
-        let height = (276. * scale) as i32;
+        let height = (313. * scale) as i32;
         let work = info.rcWork;
         let x = (point.x - width).clamp(work.left + 6, (work.right - width - 6).max(work.left + 6));
         let y =
@@ -829,13 +927,14 @@ unsafe extern "system" fn menu_procedure(
 unsafe fn paint_selection(hwnd: HWND) {
     unsafe {
         let mut paint = PAINTSTRUCT::default();
-        let dc = BeginPaint(hwnd, &mut paint);
+        let output = BeginPaint(hwnd, &mut paint);
         STATE.with(|s| {
             let state = s.borrow();
             let Some(selection) = state.as_ref().and_then(|s| s.selection.as_ref()) else {
                 return;
             };
             let desktop = &selection.desktop;
+            let dc = selection.paint.dc;
             let w = desktop.pixels.width() as i32;
             let h = desktop.pixels.height() as i32;
             let info = capture::bitmap_info(w, h);
@@ -898,6 +997,19 @@ unsafe fn paint_selection(hwnd: HWND) {
                     (y + height + 8).min(h - 32)
                 };
             }
+            // One physical-pixel guide in each direction, drawn only into the
+            // selector. Saved captures crop the untouched frozen desktop pixels.
+            let cursor_x = selection.current.x.clamp(0, w - 1);
+            let cursor_y = selection.current.y.clamp(0, h - 1);
+            let pen = CreatePen(PS_SOLID, 1, COLORREF(0x00df9f6e));
+            let previous_pen = SelectObject(dc, pen.into());
+            let _ = MoveToEx(dc, 0, cursor_y, None);
+            let _ = LineTo(dc, w, cursor_y);
+            let _ = MoveToEx(dc, cursor_x, 0, None);
+            let _ = LineTo(dc, cursor_x, h);
+            SelectObject(dc, previous_pen);
+            let _ = DeleteObject(pen.into());
+
             let rectangle = RECT {
                 left: label_x,
                 top: label_y,
@@ -936,6 +1048,9 @@ unsafe fn paint_selection(hwnd: HWND) {
             );
             SelectObject(dc, old);
             let _ = DeleteObject(font.into());
+            // Present the completed frame once, rather than visibly dimming and
+            // restoring the selected interior on every mouse movement.
+            let _ = BitBlt(output, 0, 0, w, h, Some(dc), 0, 0, SRCCOPY);
         });
         let _ = EndPaint(hwnd, &paint);
     }

@@ -59,11 +59,13 @@ export component OptionsPanel inherits Rectangle {
             }
         }
         Rectangle {
-            height: 80px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            height: 112px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
             Text { x: 15px; y: 13px; text: "Screenshot"; color: #aeb9cb; font-size: 11px; }
             Text { x: parent.width - 113px; y: 13px; text: "Alt + Shift + S"; color: #9fbee6; font-size: 11px; }
             Text { x: 15px; y: 47px; text: "History"; color: #aeb9cb; font-size: 11px; }
             Text { x: parent.width - 113px; y: 47px; text: "Alt + Shift + V"; color: #9fbee6; font-size: 11px; }
+            Text { x: 15px; y: 79px; text: "Full screenshot"; color: #aeb9cb; font-size: 11px; }
+            Text { x: parent.width - 113px; y: 79px; text: "Alt + Shift + F"; color: #9fbee6; font-size: 11px; }
         }
         Rectangle {
             height: 28px; border-radius: 5px; background: folder-touch.has-hover ? #25344a : #1b2737;
@@ -71,14 +73,16 @@ export component OptionsPanel inherits Rectangle {
             folder-touch := TouchArea { clicked => { root.open-folder(); } }
         }
         Rectangle { vertical-stretch: 1; background: transparent; }
-        HorizontalLayout {
+        actions := HorizontalLayout {
             height: 30px; spacing: 10px;
             Rectangle {
+                min-width: 0px; preferred-width: 0px; horizontal-stretch: 1;
                 border-radius: 6px; background: restart-touch.has-hover ? #2b3a50 : #1f2b3c;
                 Text { text: "Restart app"; color: #bdd0e9; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
                 restart-touch := TouchArea { clicked => { root.restart(); } }
             }
             Rectangle {
+                min-width: 0px; preferred-width: 0px; horizontal-stretch: 1;
                 border-radius: 6px; border-width: 1px; border-color: #335782; background: check-touch.has-hover ? #234774 : #162f55;
                 Text { text: root.update-label; color: #d6e7ff; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
                 check-touch := TouchArea { enabled: !root.update-busy; clicked => { root.update(); } }

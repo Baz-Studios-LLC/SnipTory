@@ -46,7 +46,7 @@ export component HistoryWindow inherits Window {
     default-font-family: "Segoe UI Variable Text";
     default-font-size: 12px;
     in property <[CaptureItem]> captures;
-    in property <string> status: "Your captures stay on this device.";
+    in property <string> status: "Ready";
     in property <bool> has-more;
     in-out property <int> selected: -1;
     callback capture();
@@ -57,7 +57,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v004";
+    in property <string> release-version: "v005";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;

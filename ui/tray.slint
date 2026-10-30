@@ -17,7 +17,7 @@ component MenuRow inherits Rectangle {
 
 export component TrayMenu inherits Window {
     title: "SnipTory menu";
-    width: 282px; height: 276px; no-frame: true;
+    width: 282px; height: 313px; no-frame: true;
     background: #11171f;
     always-on-top: true;
     default-font-family: "Segoe UI Variable Text";
@@ -28,9 +28,9 @@ export component TrayMenu inherits Window {
     focus := FocusScope {
         key-pressed(event) => {
             if event.text == Key.Escape { root.dismiss(); return accept; }
-            if event.text == Key.DownArrow { root.selected = min(4,root.selected + 1); return accept; }
+            if event.text == Key.DownArrow { root.selected = min(5,root.selected + 1); return accept; }
             if event.text == Key.UpArrow { root.selected = max(0,root.selected - 1); return accept; }
-            if event.text == Key.Return && root.selected >= 0 { root.action(root.selected == 0 ? "history" : root.selected == 1 ? "capture" : root.selected == 2 ? "options" : root.selected == 3 ? "updates" : "exit"); return accept; }
+            if event.text == Key.Return && root.selected >= 0 { root.action(root.selected == 0 ? "history" : root.selected == 1 ? "capture" : root.selected == 2 ? "full-capture" : root.selected == 3 ? "options" : root.selected == 4 ? "updates" : "exit"); return accept; }
             return reject;
         }
     }
@@ -49,10 +49,11 @@ export component TrayMenu inherits Window {
             Rectangle { height: 1px; background: #2a3443; }
             MenuRow { label: "Open history"; shortcut: "Alt+Shift+V"; glyph: @image-url("icons/history.svg"); selected: root.selected == 0; activated => { root.action("history"); } }
             MenuRow { label: "Screenshot"; shortcut: "Alt+Shift+S"; glyph: @image-url("icons/capture.svg"); selected: root.selected == 1; activated => { root.action("capture"); } }
-            MenuRow { label: "Options"; glyph: @image-url("icons/gear.svg"); selected: root.selected == 2; activated => { root.action("options"); } }
-            MenuRow { label: "Check for updates"; glyph: @image-url("icons/update.svg"); selected: root.selected == 3; activated => { root.action("updates"); } }
+            MenuRow { label: "Full screenshot"; shortcut: "Alt+Shift+F"; glyph: @image-url("icons/capture.svg"); selected: root.selected == 2; activated => { root.action("full-capture"); } }
+            MenuRow { label: "Options"; glyph: @image-url("icons/gear.svg"); selected: root.selected == 3; activated => { root.action("options"); } }
+            MenuRow { label: "Check for updates"; glyph: @image-url("icons/update.svg"); selected: root.selected == 4; activated => { root.action("updates"); } }
             Rectangle { height: 1px; background: #2a3443; }
-            MenuRow { label: "Exit SnipTory"; glyph: @image-url("icons/close.svg"); selected: root.selected == 4; danger: true; activated => { root.action("exit"); } }
+            MenuRow { label: "Exit SnipTory"; glyph: @image-url("icons/close.svg"); selected: root.selected == 5; danger: true; activated => { root.action("exit"); } }
         }
     }
 }

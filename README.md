@@ -6,7 +6,7 @@
 
 ## Install and update
 
-Install **SnipTory-v004-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v005-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -26,11 +26,12 @@ cargo test
 cargo build --release
 ```
 
-The gallery opens on launch. Closing it keeps the tray utility running. Exit through the tray menu.
+The gallery opens on launch. Closing it keeps the tray utility running. Left-click the tray icon to select a screenshot region; right-click for History, Options, updates, and Exit. The capture reticle has thin crosshair guides spanning the desktop. Preference-save feedback returns to Ready after two seconds.
 
 | Action | Shortcut |
 | --- | --- |
 | Capture a region | Alt+Shift+S |
+| Capture the full desktop | Alt+Shift+F |
 | Open history | Alt+Shift+V |
 | Cancel selection / hide history | Escape |
 | Select a gallery item | Arrow keys |
@@ -82,7 +83,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v004/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v005/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

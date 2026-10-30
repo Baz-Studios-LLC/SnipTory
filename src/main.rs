@@ -14,6 +14,10 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::mpsc};
 
 slint::include_modules!();
 
+thread_local! {
+    static STATUS_RESET: slint::Timer = slint::Timer::default();
+}
+
 pub enum StoreCommand {
     Save(image::RgbaImage),
     Load(usize),
@@ -25,7 +29,28 @@ pub enum StoreCommand {
 
 pub fn status(ui: &slint::Weak<HistoryWindow>, message: impl Into<String>) {
     let message = message.into();
-    let _ = ui.upgrade_in_event_loop(move |ui| ui.set_status(message.into()));
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        STATUS_RESET.with(|timer| timer.stop());
+        let temporary = message == "Preferences saved";
+        ui.set_status(message.into());
+        if temporary {
+            let weak = ui.as_weak();
+            STATUS_RESET.with(|timer| {
+                timer.start(
+                    slint::TimerMode::SingleShot,
+                    std::time::Duration::from_secs(2),
+                    move || {
+                        if let Some(ui) = weak.upgrade() {
+                            // A newer capture or paste message must not be overwritten.
+                            if ui.get_status() == "Preferences saved" {
+                                ui.set_status("Ready".into());
+                            }
+                        }
+                    },
+                )
+            });
+        }
+    });
 }
 
 fn main() {
@@ -244,6 +269,7 @@ fn run() -> Result<()> {
         match action.as_str() {
             "history" => b.send(native::Command::History),
             "capture" => b.send(native::Command::Capture),
+            "full-capture" => b.send(native::Command::FullCapture),
             "options" => b.send(native::Command::Options),
             "updates" => b.send(native::Command::Updates),
             "exit" => {

@@ -159,11 +159,11 @@ export component HistoryWindow inherits Window {
             if !root.show-options : VerticalLayout {
                 spacing: 0px; padding: 0px;
             Rectangle {
-                height: 79px;
-                    Text { x: 22px; y: 17px; height: 26px; text: "Your visual memory"; font-size: 18px; font-weight: 600; color: #f0f1f6; }
-                    Text { x: 22px; y: 47px; height: 16px; text: "A moment captured. Always within reach."; font-size: 11px; color: #818b9e; }
+                height: 80px;
+                    Text { x: 20px; y: 16px; height: 26px; text: "Your visual memory"; font-size: 18px; font-weight: 600; color: #f0f1f6; }
+                    Text { x: 20px; y: 46px; height: 16px; text: "A moment captured. Always within reach."; font-size: 11px; color: #818b9e; }
                     Rectangle {
-                        x: parent.width - 126px; y: 21px;
+                        x: parent.width - 124px; y: 19px;
                         width: 104px; height: 34px; border-radius: 7px;
                         background: capture-touch.pressed ? #122946 : capture-touch.has-hover ? #234774 : #162f55;
                         animate background { duration: 110ms; }
@@ -173,14 +173,18 @@ export component HistoryWindow inherits Window {
                         capture-touch := TouchArea { clicked => { root.capture(); } }
                     }
             }
-            HorizontalLayout {
-                height: 32px; padding-left: 22px; padding-right: 22px;
-                Text { text: "RECENT CAPTURES"; font-size: 9px; letter-spacing: 1px; font-weight: 600; color: #929bad; }
-                Rectangle { horizontal-stretch: 1; }
-                Text { text: "\{root.captures.length} saved"; font-size: 10px; color: #697386; }
+            Rectangle {
+                height: 42px;
+                Text { x: 20px; y: 0px; height: 30px; vertical-alignment: center; text: "RECENT CAPTURES"; font-size: 9px; letter-spacing: 1px; font-weight: 600; color: #929bad; }
+                Text { x: parent.width - 198px; y: 0px; width: 62px; height: 30px; horizontal-alignment: right; vertical-alignment: center; text: "\{root.captures.length} saved"; font-size: 10px; color: #818b9e; }
                 Rectangle {
-                    width: 78px; height: 24px; border-radius: 5px; background: clear-touch.has-hover ? #3b2631 : transparent;
-                    Text { text: "Clear history"; font-size: 10px; color: #c58b9c; horizontal-alignment: center; vertical-alignment: center; }
+                    x: parent.width - 124px; y: 0px; width: 104px; height: 30px; border-radius: 6px;
+                    opacity: clear-touch.enabled ? 1 : 0.45;
+                    border-width: 1px; border-color: #61404d;
+                    background: clear-touch.pressed ? #4b2936 : clear-touch.has-hover ? #3b2631 : #2b202b;
+                    animate background { duration: 110ms; }
+                    Image { x: 10px; y: 9px; width: 12px; height: 12px; source: @image-url("icons/trash.svg"); colorize: #e2a1b6; }
+                    Text { x: 29px; y: 0px; width: parent.width - 37px; height: parent.height; text: "Clear history"; font-size: 10px; color: #e2a1b6; horizontal-alignment: center; vertical-alignment: center; }
                     clear-touch := TouchArea {enabled: root.captures.length > 0 && !root.history-busy; clicked => {root.request-clear();}}
                 }
             }

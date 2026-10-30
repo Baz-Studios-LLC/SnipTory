@@ -444,7 +444,19 @@ fn prepare_capture(kind: CaptureKind) {
     }
     remember_target();
     STATE.with(|s| s.borrow_mut().as_mut().unwrap().capture_request = Some(kind));
-    // Hide Slint first on its owning thread; queue capture only once hidden.
+    // Screenshot the visible desktop, including History when it is open.
+    // Hiding it here prevents users from capturing the gallery itself.
+    if !matches!(kind, CaptureKind::Gif) {
+        STATE.with(|s| {
+            if let Some(s) = s.borrow().as_ref() {
+                unsafe {
+                    let _ = PostMessageW(Some(s.owner), WM_APP + 3, WPARAM(0), LPARAM(0));
+                }
+            }
+        });
+        return;
+    }
+    // GIF selection still hides History before opening its live overlay.
     STATE.with(|s| {
         if let Some(s) = s.borrow().as_ref() {
             let owner = s.owner.0 as isize;

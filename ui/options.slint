@@ -1,0 +1,88 @@
+import { ScrollView } from "std-widgets.slint";
+
+component Preference inherits Rectangle {
+    in property <string> title;
+    in property <string> detail;
+    in-out property <bool> checked;
+    callback toggled(bool);
+    height: 72px;
+    background: transparent;
+    Text { x: 15px; y: 12px; height: 20px; text: root.title; color: #e0e5ef; font-size: 12px; font-weight: 600; }
+    Text { x: 15px; y: 37px; width: parent.width - 85px; height: 17px; text: root.detail; color: #8591a6; font-size: 10px; overflow: elide; }
+    Rectangle {
+        x: parent.width - 56px; y: 24px; width: 34px; height: 19px; border-radius: 10px;
+        background: root.checked ? #447bbf : #343d4c;
+        animate background { duration: 100ms; }
+        Rectangle { x: root.checked ? 17px : 3px; y: 3px; width: 13px; height: 13px; border-radius: 7px; background: #f5f8ff; animate x { duration: 100ms; } }
+        TouchArea { clicked => { root.checked = !root.checked; root.toggled(root.checked); } }
+    }
+}
+
+export component OptionsPanel inherits Rectangle {
+    in-out property <bool> launch-at-sign-in;
+    in-out property <bool> automatic-updates;
+    in-out property <bool> paste-on-select;
+    callback changed-setting(string,bool);
+    callback back();
+    callback open-folder();
+    callback restart();
+    callback update();
+    in property <string> update-label;
+    in property <bool> update-busy;
+    background: transparent;
+    vertical-stretch: 1;
+    ScrollView {
+      content-width: self.width;
+      VerticalLayout {
+        padding: 20px; spacing: 12px;
+        Rectangle {
+            height: 48px; background: transparent;
+            Text { x: 0px; y: 0px; text: "Options"; color: #eff2f9; font-size: 20px; font-weight: 600; }
+            Text { x: 0px; y: 30px; text: "Make SnipTory feel like yours."; color: #8390a6; font-size: 11px; }
+            Rectangle {
+                x: parent.width - 77px; y: 3px; width: 77px; height: 27px; border-radius: 6px;
+                background: back-touch.has-hover ? #283447 : #1c2634;
+                Text { text: "← History"; horizontal-alignment: center; vertical-alignment: center; color: #adc3df; font-size: 10px; }
+                back-touch := TouchArea { clicked => { root.back(); } }
+            }
+        }
+        Rectangle {
+            height: 218px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            VerticalLayout {
+                spacing: 0px; padding: 0px;
+                Preference { title: "Launch at sign-in"; detail: "Ready in the tray when Windows starts"; checked <=> root.launch-at-sign-in; toggled(value) => { root.changed-setting("startup",value); } }
+                Rectangle { height: 1px; background: #2b3340; }
+                Preference { title: "Automatic update checks"; detail: "Check quietly; choose when to restart"; checked <=> root.automatic-updates; toggled(value) => { root.changed-setting("updates",value); } }
+                Rectangle { height: 1px; background: #2b3340; }
+                Preference { title: "Paste when choosing a capture"; detail: "Turn off to copy without sending Ctrl+V"; checked <=> root.paste-on-select; toggled(value) => { root.changed-setting("paste",value); } }
+            }
+        }
+        Rectangle {
+            height: 80px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            Text { x: 15px; y: 13px; text: "Screenshot"; color: #aeb9cb; font-size: 11px; }
+            Text { x: parent.width - 113px; y: 13px; text: "Alt + Shift + S"; color: #9fbee6; font-size: 11px; }
+            Text { x: 15px; y: 47px; text: "History"; color: #aeb9cb; font-size: 11px; }
+            Text { x: parent.width - 113px; y: 47px; text: "Alt + Shift + V"; color: #9fbee6; font-size: 11px; }
+        }
+        Rectangle {
+            height: 28px; border-radius: 5px; background: folder-touch.has-hover ? #25344a : #1b2737;
+            Text { text: "Open captures folder ↗"; color: #adc8ed; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+            folder-touch := TouchArea { clicked => { root.open-folder(); } }
+        }
+        Rectangle { vertical-stretch: 1; background: transparent; }
+        HorizontalLayout {
+            height: 30px; spacing: 10px;
+            Rectangle {
+                border-radius: 6px; background: restart-touch.has-hover ? #2b3a50 : #1f2b3c;
+                Text { text: "Restart app"; color: #bdd0e9; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                restart-touch := TouchArea { clicked => { root.restart(); } }
+            }
+            Rectangle {
+                border-radius: 6px; border-width: 1px; border-color: #335782; background: check-touch.has-hover ? #234774 : #162f55;
+                Text { text: root.update-label; color: #d6e7ff; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                check-touch := TouchArea { enabled: !root.update-busy; clicked => { root.update(); } }
+            }
+        }
+      }
+    }
+}

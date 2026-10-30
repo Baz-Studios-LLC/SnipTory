@@ -1,0 +1,58 @@
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    in property <string> shortcut;
+    in property <image> glyph;
+    in property <bool> selected;
+    in property <bool> danger;
+    callback activated();
+    height: 37px;
+    border-radius: 6px;
+    background: touch.has-hover || root.selected ? (root.danger ? #3b252e : #203650) : transparent;
+    animate background { duration: 90ms; }
+    Image { x: 11px; y: 10px; width: 17px; height: 17px; source: root.glyph; colorize: root.danger ? #df9aab : #a9c8ef; }
+    Text { x: 39px; y: 0px; height: parent.height; vertical-alignment: center; text: root.label; font-size: 12px; color: root.danger ? #e2aab8 : #e1e8f3; }
+    Text { x: parent.width - 93px; width: 83px; height: parent.height; horizontal-alignment: right; vertical-alignment: center; text: root.shortcut; font-size: 9px; color: #8297b3; }
+    touch := TouchArea { clicked => { root.activated(); } }
+}
+
+export component TrayMenu inherits Window {
+    title: "SnipTory menu";
+    width: 282px; height: 276px; no-frame: true;
+    background: #11171f;
+    always-on-top: true;
+    default-font-family: "Segoe UI Variable Text";
+    in property <string> release-version;
+    in-out property <int> selected: -1;
+    callback action(string);
+    callback dismiss();
+    focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.dismiss(); return accept; }
+            if event.text == Key.DownArrow { root.selected = min(4,root.selected + 1); return accept; }
+            if event.text == Key.UpArrow { root.selected = max(0,root.selected - 1); return accept; }
+            if event.text == Key.Return && root.selected >= 0 { root.action(root.selected == 0 ? "history" : root.selected == 1 ? "capture" : root.selected == 2 ? "options" : root.selected == 3 ? "updates" : "exit"); return accept; }
+            return reject;
+        }
+    }
+    public function prepare() { root.selected = -1; focus.focus(); }
+    Rectangle {
+        border-radius: 10px; border-width: 1px; border-color: #344055; background: #11171f;
+        VerticalLayout {
+            padding: 8px; spacing: 2px;
+            Rectangle {
+                height: 48px; background: transparent;
+                Image { x: 8px; y: 9px; width: 28px; height: 28px; source: @image-url("../assets/sniptory.png"); }
+                Text { x: 45px; y: 8px; text: "SnipTory"; font-size: 13px; font-weight: 600; color: #edf2fa; }
+                Text { x: 45px; y: 27px; text: "Capture. Recall. Paste."; font-size: 9px; color: #798ca8; }
+                Text { x: parent.width - 43px; y: 11px; text: root.release-version; font-size: 9px; color: #698bb8; }
+            }
+            Rectangle { height: 1px; background: #2a3443; }
+            MenuRow { label: "Open history"; shortcut: "Alt+Shift+V"; glyph: @image-url("icons/history.svg"); selected: root.selected == 0; activated => { root.action("history"); } }
+            MenuRow { label: "Screenshot"; shortcut: "Alt+Shift+S"; glyph: @image-url("icons/capture.svg"); selected: root.selected == 1; activated => { root.action("capture"); } }
+            MenuRow { label: "Options"; glyph: @image-url("icons/gear.svg"); selected: root.selected == 2; activated => { root.action("options"); } }
+            MenuRow { label: "Check for updates"; glyph: @image-url("icons/update.svg"); selected: root.selected == 3; activated => { root.action("updates"); } }
+            Rectangle { height: 1px; background: #2a3443; }
+            MenuRow { label: "Exit SnipTory"; glyph: @image-url("icons/close.svg"); selected: root.selected == 4; danger: true; activated => { root.action("exit"); } }
+        }
+    }
+}

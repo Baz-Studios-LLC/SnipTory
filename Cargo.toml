@@ -1,0 +1,36 @@
+[package]
+name = "sniptory"
+version = "0.0.1"
+license = "MIT"
+authors = ["Baz Studios LLC"]
+repository = "https://github.com/Baz-Studios-LLC/SnipTory"
+edition = "2024"
+description = "Capture. Recall. Paste. A native Windows screenshot utility."
+publish = false
+build = "build.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rusqlite = { version = "0.41", default-features = false, features = ["bundled"] }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-18", "raw-window-handle-06"] }
+raw-window-handle = "0.6"
+velopack = "=1.2.161"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows = { version = "0.62", features = [
+    "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm",
+    "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_LibraryLoader",
+    "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell",
+    "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_Security", "Win32_System_Registry"
+] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+winresource = "0.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

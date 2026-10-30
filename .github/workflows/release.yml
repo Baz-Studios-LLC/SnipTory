@@ -1,0 +1,29 @@
+name: Package and release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
+      - run: cargo test --locked
+      - name: Package installer and update feed
+        shell: pwsh
+        run: ./scripts/Package.ps1
+      - name: Publish integer-versioned release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseTag = 'v' + (Get-Content VERSION -Raw).Trim()
+          $artifacts = Get-ChildItem -LiteralPath "dist/$releaseTag" -File | ForEach-Object FullName
+          gh release create $releaseTag @artifacts --title "SnipTory $releaseTag" --notes-file "release-notes/$releaseTag.md" --target $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Release publishing failed' }

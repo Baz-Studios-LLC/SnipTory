@@ -1,0 +1,222 @@
+import { ScrollView } from "std-widgets.slint";
+import { OptionsPanel } from "options.slint";
+export { TrayMenu } from "tray.slint";
+
+export struct CaptureItem {
+    preview: image,
+    label: string,
+    dimensions: string,
+}
+
+component Keycap inherits Rectangle {
+    in property <string> label;
+    height: 22px;
+    width: keytext.preferred-width + 12px;
+    border-radius: 5px;
+    background: #22262e;
+    border-width: 1px;
+    border-color: #353a44;
+    keytext := Text { text: root.label; font-size: 10px; color: #a8afbd; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+export component HistoryWindow inherits Window {
+    title: "SnipTory";
+    preferred-width: 496px;
+    preferred-height: 648px;
+    min-width: 420px;
+    min-height: 360px;
+    no-frame: true;
+    always-on-top: true;
+    icon: @image-url("../assets/sniptory.png");
+    background: #111419;
+    default-font-family: "Segoe UI Variable Text";
+    default-font-size: 12px;
+    in property <[CaptureItem]> captures;
+    in property <string> status: "Your captures stay on this device.";
+    in property <bool> has-more;
+    in-out property <int> selected: -1;
+    callback capture();
+    callback dismiss();
+    callback paste(int);
+    callback more();
+    callback navigate(string);
+    callback drag();
+    callback refresh-gallery();
+    callback update-action();
+    callback check-updates();
+    in property <string> release-version: "v001";
+    in property <string> update-label: "Check for updates";
+    in property <string> update-detail: "";
+    in property <bool> update-busy;
+    in-out property <bool> show-options;
+    in-out property <bool> launch-at-sign-in;
+    in-out property <bool> automatic-updates: true;
+    in-out property <bool> paste-on-select: true;
+    callback setting-changed(string, bool);
+    callback open-folder();
+    callback tray-menu();
+    callback restart-app();
+
+    focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.dismiss(); return accept; }
+            if event.text == Key.Return { if root.selected >= 0 { root.paste(root.selected); } return accept; }
+            if event.text == Key.LeftArrow { root.navigate("left"); return accept; }
+            if event.text == Key.RightArrow { root.navigate("right"); return accept; }
+            if event.text == Key.UpArrow { root.navigate("up"); return accept; }
+            if event.text == Key.DownArrow { root.navigate("down"); return accept; }
+            return reject;
+        }
+    }
+    public function prepare() { focus.focus(); }
+
+    Rectangle {
+        border-radius: 12px;
+        border-color: #353b47;
+        border-width: 1px;
+        background: #111419;
+        VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+            Rectangle {
+                height: 73px;
+                TouchArea { pointer-event(e) => { if e.kind == PointerEventKind.down { root.drag(); } } }
+                    Rectangle {
+                        x: 22px; y: 20px;
+                        width: 33px; height: 33px; border-radius: 10px;
+                        background: #162f55;
+                        Image { source: @image-url("icons/capture.svg"); width: 21px; height: 21px; x: 6px; y: 6px; colorize: #f1f6ff; }
+                    }
+                    Text { x: 66px; y: 16px; height: 25px; text: "SnipTory"; font-size: 18px; font-weight: 700; color: #f2f3f8; }
+                    Text { x: 66px; y: 43px; height: 13px; text: "CAPTURE. RECALL. PASTE."; font-size: 9px; letter-spacing: 1.1px; color: #777f90; }
+                    Rectangle {
+                        x: parent.width - 78px; y: 22px; width: 28px; height: 28px; border-radius: 7px;
+                        background: gear-touch.has-hover || root.show-options ? #1d304a : transparent;
+                        Image { source: @image-url("icons/gear.svg"); width: 18px; height: 18px; x: 5px; y: 5px; colorize: root.show-options ? #8ab6ed : #939cad; }
+                        gear-touch := TouchArea { clicked => { root.show-options = !root.show-options; } }
+                    }
+                    Rectangle {
+                        x: parent.width - 44px; y: 22px;
+                        width: 28px; height: 28px; border-radius: 7px;
+                        background: close-touch.has-hover ? #2a2f39 : transparent;
+                        Image { source: @image-url("icons/close.svg"); width: 18px; height: 18px; x: 5px; y: 5px; colorize: #939cad; }
+                        close-touch := TouchArea { clicked => { root.dismiss(); } }
+                    }
+            }
+            Rectangle { height: 1px; background: #262b34; }
+            if root.show-options : OptionsPanel {
+                launch-at-sign-in <=> root.launch-at-sign-in;
+                automatic-updates <=> root.automatic-updates;
+                paste-on-select <=> root.paste-on-select;
+                update-label: root.update-label;
+                update-busy: root.update-busy;
+                back => { root.show-options = false; }
+                changed-setting(key,value) => { root.setting-changed(key,value); }
+                open-folder => { root.open-folder(); }
+                restart => { root.restart-app(); }
+                update => { root.update-action(); }
+            }
+            if !root.show-options : VerticalLayout {
+                spacing: 0px; padding: 0px;
+            Rectangle {
+                height: 79px;
+                    Text { x: 22px; y: 17px; height: 26px; text: "Your visual memory"; font-size: 18px; font-weight: 600; color: #f0f1f6; }
+                    Text { x: 22px; y: 47px; height: 16px; text: "A moment captured. Always within reach."; font-size: 11px; color: #818b9e; }
+                    Rectangle {
+                        x: parent.width - 126px; y: 21px;
+                        width: 104px; height: 34px; border-radius: 7px;
+                        background: capture-touch.pressed ? #122946 : capture-touch.has-hover ? #234774 : #162f55;
+                        animate background { duration: 110ms; }
+                        border-width: 1px; border-color: #335782;
+                        Image { x: 11px; y: 10px; source: @image-url("icons/capture.svg"); width: 15px; height: 15px; colorize: #eef5ff; }
+                        Text { x: 34px; y: 0px; height: parent.height; vertical-alignment: center; text: "Capture"; font-size: 12px; font-weight: 600; color: #eef5ff; }
+                        capture-touch := TouchArea { clicked => { root.capture(); } }
+                    }
+            }
+            HorizontalLayout {
+                height: 32px; padding-left: 22px; padding-right: 22px;
+                Text { text: "RECENT CAPTURES"; font-size: 9px; letter-spacing: 1px; font-weight: 600; color: #929bad; }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: "\{root.captures.length} saved"; font-size: 10px; color: #697386; }
+            }
+            if root.captures.length == 0 : Rectangle {
+                vertical-stretch: 1;
+                    Rectangle {
+                        x: (parent.width - self.width) / 2; y: parent.height / 2 - 106px;
+                        width: 66px; height: 66px; border-radius: 20px; background: #142338; border-color: #294263; border-width: 1px;
+                        Image { source: @image-url("icons/image.svg"); width: 29px; height: 29px; x: 18px; y: 18px; colorize: #6e9fdf; }
+                    }
+                    Text { x: 20px; width: parent.width - 40px; y: parent.height / 2 - 20px; height: 24px; text: "Keep something worth keeping."; horizontal-alignment: center; font-size: 16px; font-weight: 600; color: #e5e8f0; }
+                    Text { x: 20px; width: parent.width - 40px; y: parent.height / 2 + 16px; height: 38px; text: "Capture a detail, an idea, a little inspiration.\nFind it here whenever you need it."; horizontal-alignment: center; font-size: 12px; color: #818b9e; }
+                    HorizontalLayout { y: parent.height / 2 + 72px; height: 22px; width: parent.width; alignment: center; spacing: 5px; Keycap { label: "Alt"; } Keycap { label: "Shift"; } Keycap { label: "S"; } }
+            }
+            if root.captures.length > 0 : ScrollView {
+                content-width: self.width;
+                property <int> selection: root.selected;
+                changed selection => {
+                    if self.selection >= 0 {
+                        if floor(self.selection / 3) * 157px + self.content-y < 0px {
+                            self.content-y = -floor(self.selection / 3) * 157px;
+                        } else if floor(self.selection / 3) * 157px + 152px + self.content-y > self.height {
+                            self.content-y = self.height - floor(self.selection / 3) * 157px - 152px;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    padding-left: 20px; padding-right: 20px; padding-top: 5px; padding-bottom: 16px; spacing: 10px;
+                    for row in ceil(root.captures.length / 3) : HorizontalLayout {
+                        spacing: 10px;
+                        for col in 3 : Rectangle {
+                            property <int> index: row * 3 + col;
+                            property <bool> exists: self.index < root.captures.length;
+                            height: 147px;
+                            horizontal-stretch: 1;
+                            border-radius: 9px;
+                            background: self.exists ? (card-touch.has-hover ? #252a35 : #1b2029) : transparent;
+                            border-width: 1px;
+                            border-color: self.exists ? (root.selected == self.index ? #6e9fdf : card-touch.has-hover ? #596076 : #303642) : transparent;
+                            animate border-color { duration: 100ms; }
+                            if self.exists : Rectangle {
+                                background: transparent;
+                                Rectangle {
+                                    x: 5px; y: 5px; width: parent.width - 10px;
+                                    border-radius: 5px; background: #101318; height: 98px; clip: true;
+                                    Image { source: root.captures[index].preview; image-fit: contain; }
+                                }
+                                Text { x: 8px; y: 110px; width: parent.width - 16px; height: 14px; text: root.captures[index].label; font-size: 10px; color: #d3d8e3; overflow: elide; }
+                                Text { x: 8px; y: 128px; width: parent.width - 16px; height: 12px; text: root.captures[index].dimensions; font-size: 9px; color: #7d8799; overflow: elide; }
+                            }
+                            card-touch := TouchArea { enabled: parent.exists; clicked => { root.paste(parent.index); } }
+                        }
+                    }
+                    if root.has-more : Rectangle {
+                        height: 32px; border-radius: 6px; background: more-touch.has-hover ? #292f3b : #1c212a;
+                        Text { text: "Load older captures"; horizontal-alignment: center; vertical-alignment: center; color: #a8b0c1; font-size: 11px; }
+                        more-touch := TouchArea { clicked => { root.more(); } }
+                    }
+                }
+            }
+            }
+            Rectangle { height: 1px; background: #262b34; }
+            Rectangle {
+                height: 96px;
+                Rectangle { x: 22px; y: 17px; width: 5px; height: 5px; border-radius: 3px; background: #88c9a8; }
+                Text { x: 33px; y: 10px; width: parent.width - 55px; height: 19px; vertical-alignment: center; text: root.status; font-size: 10px; color: #8b96a9; overflow: elide; }
+                Text { x: 22px; y: 35px; height: 16px; text: root.show-options ? "Preferences are saved on this device" : root.paste-on-select ? "Click to paste  ·  Arrow keys to explore" : "Click to copy  ·  Arrow keys to explore"; font-size: 10px; color: #646f82; }
+                Text { x: parent.width - 85px; y: 35px; height: 16px; text: "ESC to close"; font-size: 9px; color: #747f91; }
+                Rectangle {
+                    x: 20px; y: 64px; width: parent.width - 40px; height: 28px;
+                    background: transparent;
+                    Text { x: 2px; y: 3px; height: 18px; text: root.release-version; color: #8294ae; font-size: 10px; }
+                    Text { x: 46px; y: 3px; width: max(0px,parent.width - 200px); height: 18px; text: root.update-detail; color: #79869b; font-size: 9px; overflow: elide; }
+                    Rectangle {
+                        x: parent.width - self.width; width: 136px; height: 24px; border-radius: 5px;
+                        background: update-touch.has-hover ? #1c314e : #182332;
+                        Text { text: root.update-label; horizontal-alignment: center; vertical-alignment: center; color: #a9c8ef; font-size: 10px; }
+                        update-touch := TouchArea { enabled: !root.update-busy; clicked => { root.update-action(); } }
+                    }
+                }
+            }
+        }
+    }
+}

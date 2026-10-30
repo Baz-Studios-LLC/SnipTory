@@ -68,7 +68,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v007";
+    in property <string> release-version: "v008";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -215,6 +215,8 @@ export component HistoryWindow inherits Window {
                             property <int> index: row * 3 + col;
                             property <bool> exists: self.index < root.captures.length;
                             height: 147px;
+                            min-width: 0px;
+                            preferred-width: 0px;
                             horizontal-stretch: 1;
                             border-radius: 9px;
                             background: self.exists ? (card-touch.has-hover ? #252a35 : #1b2029) : transparent;
@@ -226,7 +228,13 @@ export component HistoryWindow inherits Window {
                                 Rectangle {
                                     x: 5px; y: 5px; width: parent.width - 10px;
                                     border-radius: 5px; background: #101318; height: 98px; clip: true;
-                                    Image { source: root.captures[index].preview; image-fit: contain; }
+                                    Image {
+                                        x: 6px; y: 6px;
+                                        width: parent.width - 12px;
+                                        height: parent.height - 12px;
+                                        source: root.captures[index].preview;
+                                        image-fit: contain;
+                                    }
                                     if root.captures[index].animated : Rectangle {
                                         x: 5px; y: 5px; width: 29px; height: 16px; border-radius: 4px; background: #522a39;
                                         Text { text: "GIF"; font-size: 9px; font-weight: 600; color: #ffdce4; horizontal-alignment: center; vertical-alignment: center; }

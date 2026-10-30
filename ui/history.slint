@@ -1,11 +1,13 @@
 import { ScrollView } from "std-widgets.slint";
 import { OptionsPanel } from "options.slint";
 export { TrayMenu } from "tray.slint";
+export { RecordingBar } from "recording.slint";
 
 export struct CaptureItem {
     preview: image,
     label: string,
     dimensions: string,
+    animated: bool,
 }
 
 component Keycap inherits Rectangle {
@@ -57,7 +59,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v005";
+    in property <string> release-version: "v006";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -195,6 +197,10 @@ export component HistoryWindow inherits Window {
                                     x: 5px; y: 5px; width: parent.width - 10px;
                                     border-radius: 5px; background: #101318; height: 98px; clip: true;
                                     Image { source: root.captures[index].preview; image-fit: contain; }
+                                    if root.captures[index].animated : Rectangle {
+                                        x: 5px; y: 5px; width: 29px; height: 16px; border-radius: 4px; background: #522a39;
+                                        Text { text: "GIF"; font-size: 9px; font-weight: 600; color: #ffdce4; horizontal-alignment: center; vertical-alignment: center; }
+                                    }
                                 }
                                 Text { x: 8px; y: 110px; width: parent.width - 16px; height: 14px; text: root.captures[index].label; font-size: 10px; color: #d3d8e3; overflow: elide; }
                                 Text { x: 8px; y: 128px; width: parent.width - 16px; height: 12px; text: root.captures[index].dimensions; font-size: 9px; color: #7d8799; overflow: elide; }

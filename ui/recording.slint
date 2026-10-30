@@ -1,0 +1,28 @@
+export component RecordingBar inherits Window {
+    title: "SnipTory GIF recording";
+    width: 312px; height: 52px; no-frame: true; always-on-top: true;
+    default-font-family: "Segoe UI Variable Text";
+    background: #13171f;
+    in property <string> elapsed: "0:00";
+    in property <bool> finishing;
+    callback stop();
+    callback cancel();
+    Rectangle {
+        border-radius: 10px; border-width: 1px; border-color: #5e343f; background: #13171f;
+        Rectangle { x: 16px; y: 22px; width: 7px; height: 7px; border-radius: 4px; background: #ef6a78; }
+        Text { x: 33px; y: 8px; height: 17px; text: root.finishing ? "Finishing GIF…" : "Recording GIF"; font-size: 11px; font-weight: 600; color: #f4e3e7; }
+        Text { x: 33px; y: 27px; height: 14px; text: root.elapsed; font-size: 10px; color: #a398a7; }
+        Rectangle {
+            x: 200px; y: 9px; width: 68px; height: 34px; border-radius: 6px; border-width: 1px; border-color: #75404e;
+            background: stop-touch.has-hover ? #63313f : #432631;
+            Rectangle { x: 11px; y: 13px; width: 8px; height: 8px; border-radius: 2px; background: #ffb3bd; }
+            Text { x: 27px; height: parent.height; vertical-alignment: center; text: "Stop"; font-size: 11px; color: #ffe7ed; }
+            stop-touch := TouchArea { enabled: !root.finishing; clicked => { root.stop(); } }
+        }
+        Rectangle {
+            x: 276px; y: 14px; width: 24px; height: 24px; border-radius: 5px; background: cancel-touch.has-hover ? #30232e : transparent;
+            Image { x: 4px; y: 4px; width: 16px; height: 16px; source: @image-url("icons/close.svg"); colorize: #bba3af; }
+            cancel-touch := TouchArea { clicked => { root.cancel(); } }
+        }
+    }
+}

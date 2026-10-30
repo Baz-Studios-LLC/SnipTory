@@ -6,7 +6,7 @@
 
 ## Install and update
 
-Install **SnipTory-v005-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v006-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -26,12 +26,13 @@ cargo test
 cargo build --release
 ```
 
-The gallery opens on launch. Closing it keeps the tray utility running. Left-click the tray icon to select a screenshot region; right-click for History, Options, updates, and Exit. The capture reticle has thin crosshair guides spanning the desktop. Preference-save feedback returns to Ready after two seconds.
+The gallery opens on launch. Closing it keeps the tray utility running. Left-click the tray icon to select a screenshot region; right-click for History, capture actions, Options, and Exit. The capture reticle has thin crosshair guides spanning the desktop. Preference-save feedback returns to Ready after two seconds.
 
 | Action | Shortcut |
 | --- | --- |
 | Capture a region | Alt+Shift+S |
 | Capture the full desktop | Alt+Shift+F |
+| Record a region as GIF | Alt+Shift+G |
 | Open history | Alt+Shift+V |
 | Cancel selection / hide history | Escape |
 | Select a gallery item | Arrow keys |
@@ -43,6 +44,14 @@ Drag a rectangle to capture. The image is copied to the clipboard and saved as P
 
 The design standard is modern, polished, and restrained. A charcoal shell, reference navy **#162F55**, brighter blue focus accents, Segoe UI Variable typography, rounded preview cards, and thin borders create a compact utility rather than a conventional application dashboard. Lavender is excluded from the palette.
 
+## GIF recording
+
+Press **Alt+Shift+G**, select a region with the white reticle and red guide lines, and release to record. Screenshot guides remain blue. A red-accented bar at the bottom center of that monitor shows elapsed time, Stop, and cancel. Recording starts automatically; Stop saves to History and cancel discards it.
+
+Recording targets 12 FPS at the selected resolution, includes the cursor, and has no audio or duration limit. A capture worker and streaming encoder exchange at most one queued frame. Slow encoding drops intermediate samples while preserving elapsed timing. Raw frames are limited to 64 MiB; memory does not grow with recording length. Recording controls are excluded using Windows display affinity. The app refuses recording if it cannot set that exclusion.
+
+GIFs share History with screenshots, with a GIF badge and duration. Clipboard operations provide the original animated file through Windows CF_HDROP. Destinations that accept file attachments preserve animation; the app does not publish a flattened still-image fallback. Destination-specific GIF paste/attachment support varies. Finish the recording before restarting or updating; exiting finishes saving the active recording.
+
 ## Architecture
 
 - `src/main.rs`: Slint gallery, callbacks, background storage worker.
@@ -52,17 +61,18 @@ The design standard is modern, polished, and restrained. A charcoal shell, refer
 - `src/history.rs`: SQLite metadata, atomic PNG and thumbnail writes.
 - `src/settings.rs`: persisted preferences and this app's per-user startup entry.
 - `src/updates.rs`: installer-managed release checks, downloads, and restart coordination.
+- `src/recording.rs`: region capture, cursor composition, bounded frame queue, and streaming GIF encoding.
 - `ui/history.slint`, `ui/options.slint`, `ui/tray.slint`: gallery, integrated Options, and matching tray menu.
 
 The desktop is frozen **before** the selector is displayed. Selection crops that immutable image, so selector borders never appear in output. Slint runs on the main thread; native integration and storage each have a blocking worker. No idle polling timer is used. A temporary 30 ms timer waits for physical modifiers to be released before paste, with a two-second timeout.
 
 Per-monitor-v2 DPI awareness comes from the executable manifest. Selection uses virtual-desktop physical pixels, including negative monitor origins. Gallery placement is constrained to the cursor monitor's work area.
 
-Storage lives in `%LOCALAPPDATA%\Sniptory\`: `captures/screenshots/`, `thumbnails/`, and `sniptory.db`. SQLite uses WAL and full synchronous writes. Missing or unreadable history assets are skipped; thumbnails can be regenerated in memory from originals. Files are written to a temporary file, flushed, then renamed before metadata is inserted.
+Storage lives in `%LOCALAPPDATA%\Sniptory\`: `captures/screenshots/`, `captures/gifs/`, `thumbnails/`, and `sniptory.db`. SQLite uses WAL and full synchronous writes. Missing or unreadable history assets are skipped; thumbnails can be regenerated in memory from originals. Files are written to a temporary file, flushed, then renamed before metadata is inserted.
 
 ## Scope and limitations
 
-Phase 1 supports screenshots, a persistent gallery, tray control, global hotkeys, paste-back, saved options, and installer-managed updates. GIF recording remains future work.
+Phase 1 supports screenshots, a persistent gallery, tray control, global hotkeys, paste-back, saved options, and installer-managed updates. GIF recording is available with Alt+Shift+G.
 
 GDI capture prioritizes small dependencies and simple region selection. Protected video/windows, secure desktops, exclusive fullscreen content, and HDR color fidelity are not guaranteed. Windows may return black protected content without an explicit error. A virtual desktop larger than a 512 MiB raw frame is rejected. Selection temporarily uses additional memory for its frozen and dimmed images; those buffers are freed on completion or cancellation.
 
@@ -70,9 +80,9 @@ Windows can prevent focus changes and synthetic input, especially into elevated 
 
 ## Validation so far
 
-The app builds and launches on Windows. Automated checks cover reversed/clamped region cropping, PNG and thumbnail persistence across database reopening, and integer release labels. An earlier manual native test passed an actual desktop-pixel roundtrip through the Windows CF_DIB clipboard. The gallery was visually inspected and selection cancellation was exercised. The corrected gear and X controls were exercised in the running Windows app: Options opened, X hid the window, and the tray process remained running. Full drag-to-capture, paste-back, current UI changes, installation, and the first version-to-version update are left to the user, as requested. Mixed-DPI hardware, protected content, and elevated paste targets have not been exercised.
+The app builds and launches on Windows. Automated checks cover reversed/clamped region cropping, PNG/GIF metadata and thumbnail persistence across database reopening, GIF frame contents/timing, and integer release labels. An earlier manual native test passed an actual desktop-pixel roundtrip through the Windows CF_DIB clipboard. The gallery was visually inspected and selection cancellation was exercised. The corrected gear and X controls were exercised in the running Windows app: Options opened, X hid the window, and the tray process remained running. Full drag-to-capture, paste-back, current UI changes, installation, and the first version-to-version update are left to the user, as requested. Mixed-DPI hardware, protected content, and elevated paste targets have not been exercised.
 
-Next: user feedback on Phase 1's capture/paste flow and visual design, followed by reliability fixes and then GIF recording.
+Next: user feedback on GIF recording, attachment compatibility, and performance.
 
 ## Release packaging
 
@@ -83,7 +93,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v005/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v006/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

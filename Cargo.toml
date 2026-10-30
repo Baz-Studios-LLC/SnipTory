@@ -1,6 +1,6 @@
 [package]
 name = "sniptory"
-version = "0.0.5"
+version = "0.0.6"
 license = "MIT"
 authors = ["Baz Studios LLC"]
 repository = "https://github.com/Baz-Studios-LLC/SnipTory"
@@ -12,7 +12,8 @@ build = "build.rs"
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "gif"] }
+gif = "0.14"
 rusqlite = { version = "0.41", default-features = false, features = ["bundled"] }
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-18", "raw-window-handle-06"] }
 raw-window-handle = "0.6"

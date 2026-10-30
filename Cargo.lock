@@ -2073,6 +2073,8 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "color_quant",
+ "gif",
  "moxcms",
  "num-traits",
  "png",
@@ -3970,10 +3972,11 @@ dependencies = [
 
 [[package]]
 name = "sniptory"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "chrono",
+ "gif",
  "image",
  "raw-window-handle",
  "rusqlite",

@@ -14,6 +14,7 @@ pub struct Entry {
     pub timestamp: i64,
     pub width: u32,
     pub height: u32,
+    pub duration_ms: Option<u64>,
 }
 
 pub struct History {
@@ -24,6 +25,7 @@ pub struct History {
 impl History {
     pub fn open(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join("captures/screenshots"))?;
+        fs::create_dir_all(root.join("captures/gifs"))?;
         fs::create_dir_all(root.join("thumbnails"))?;
         let db = Connection::open(root.join("sniptory.db"))?;
         db.execute_batch(
@@ -63,7 +65,7 @@ impl History {
     }
 
     pub fn list(&self, limit: usize) -> Result<Vec<Entry>> {
-        let mut statement = self.db.prepare("SELECT path,thumbnail,timestamp,width,height FROM captures ORDER BY timestamp DESC,id DESC LIMIT ?1")?;
+        let mut statement = self.db.prepare("SELECT path,thumbnail,timestamp,width,height,duration_ms FROM captures ORDER BY timestamp DESC,id DESC LIMIT ?1")?;
         let entries = statement
             .query_map([limit as i64], |r| {
                 Ok(Entry {
@@ -72,10 +74,24 @@ impl History {
                     timestamp: r.get(2)?,
                     width: r.get(3)?,
                     height: r.get(4)?,
+                    duration_ms: r.get::<_, Option<i64>>(5)?.map(|value| value.max(0) as u64),
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(entries)
+    }
+
+    pub fn save_gif(&self, recording: &crate::recording::RecordedGif) -> Result<()> {
+        let id = recording
+            .path
+            .file_stem()
+            .context("GIF filename is missing")?
+            .to_string_lossy();
+        let thumbnail = self.root.join("thumbnails").join(format!("{id}.png"));
+        atomic_png(&thumbnail, &recording.preview)?;
+        self.db.execute("INSERT INTO captures (id,timestamp,kind,path,thumbnail,width,height,duration_ms,size) VALUES (?1,?2,'GIF',?3,?4,?5,?6,?7,?8)",
+            params![id,SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64,recording.path.to_string_lossy(),thumbnail.to_string_lossy(),recording.width,recording.height,recording.duration_ms as i64,fs::metadata(&recording.path)?.len() as i64])?;
+        Ok(())
     }
 }
 
@@ -118,6 +134,24 @@ mod tests {
         assert_eq!(image::open(&entries[0].path)?.to_rgba8(), pixels);
         assert_eq!(image::open(&entries[0].thumbnail)?.width(), 400);
         assert_eq!(entries[0].height, 480);
+        let gif_path = root.join("captures/gifs/test.gif");
+        fs::write(&gif_path, b"GIF89a")?;
+        history.save_gif(&crate::recording::RecordedGif {
+            path: gif_path.clone(),
+            preview: image::imageops::thumbnail(&pixels, 400, 300),
+            width: 640,
+            height: 480,
+            duration_ms: 1250,
+        })?;
+        drop(history);
+        let history = History::open(root.clone())?;
+        let gif = history
+            .list(60)?
+            .into_iter()
+            .find(|entry| entry.path == gif_path)
+            .unwrap();
+        assert_eq!(gif.duration_ms, Some(1250));
+        assert_eq!(image::open(gif.thumbnail)?.width(), 400);
         drop(history);
         fs::remove_dir_all(root)?;
         Ok(())

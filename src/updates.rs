@@ -113,12 +113,17 @@ pub fn start(
                                 );
                                 stage = Stage::Restart(asset);
                             }
-                            Err(_) => view(
-                                &ui,
-                                "Retry download",
-                                "Download failed. Your current version is unchanged.",
-                                false,
-                            ),
+                            Err(_) => {
+                                // The latest release may have changed since the
+                                // offer was shown. Refresh the feed on retry.
+                                stage = Stage::Check;
+                                view(
+                                    &ui,
+                                    "Retry update check",
+                                    "Download failed. Check the latest release again.",
+                                    false,
+                                );
+                            }
                         }
                     }
                     Stage::Restart(asset) => {

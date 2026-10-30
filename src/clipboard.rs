@@ -79,6 +79,63 @@ pub fn modifiers_released() -> bool {
     }
 }
 
+pub fn copy_gif(owner: HWND, path: &std::path::Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::UI::Shell::DROPFILES;
+    // CF_HDROP preserves the original animated file. Do not add a flattened DIB
+    // fallback which could make a destination silently paste a still image.
+    unsafe {
+        let path = path.canonicalize()?;
+        let names = path
+            .as_os_str()
+            .encode_wide()
+            .chain([0, 0])
+            .collect::<Vec<_>>();
+        let header = DROPFILES {
+            pFiles: size_of::<DROPFILES>() as u32,
+            fWide: true.into(),
+            ..Default::default()
+        };
+        let allocation = GlobalAlloc(GMEM_MOVEABLE, size_of::<DROPFILES>() + names.len() * 2)?;
+        let pointer = GlobalLock(allocation).cast::<u8>();
+        if pointer.is_null() {
+            let _ = GlobalFree(Some(allocation));
+            bail!("Could not allocate GIF clipboard data");
+        }
+        std::ptr::copy_nonoverlapping(
+            (&header as *const DROPFILES).cast::<u8>(),
+            pointer,
+            size_of::<DROPFILES>(),
+        );
+        std::ptr::copy_nonoverlapping(
+            names.as_ptr().cast::<u8>(),
+            pointer.add(size_of::<DROPFILES>()),
+            names.len() * 2,
+        );
+        let _ = GlobalUnlock(allocation);
+        let mut opened = false;
+        for _ in 0..12 {
+            if OpenClipboard(Some(owner)).is_ok() {
+                opened = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if !opened {
+            let _ = GlobalFree(Some(allocation));
+            bail!("Clipboard is busy. GIF saved in History.");
+        }
+        let result = EmptyClipboard()
+            .and_then(|_| SetClipboardData(15, Some(HANDLE(allocation.0))).map(|_| ()));
+        let _ = CloseClipboard();
+        if result.is_err() {
+            let _ = GlobalFree(Some(allocation));
+        }
+        result?;
+    }
+    Ok(())
+}
+
 pub fn paste() -> Result<()> {
     // SAFETY: all four INPUTs are fully initialized and sized for this process.
     unsafe {

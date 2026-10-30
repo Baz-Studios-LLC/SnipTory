@@ -59,13 +59,15 @@ export component OptionsPanel inherits Rectangle {
             }
         }
         Rectangle {
-            height: 112px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            height: 144px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
             Text { x: 15px; y: 13px; text: "Screenshot"; color: #aeb9cb; font-size: 11px; }
             Text { x: parent.width - 113px; y: 13px; text: "Alt + Shift + S"; color: #9fbee6; font-size: 11px; }
             Text { x: 15px; y: 47px; text: "History"; color: #aeb9cb; font-size: 11px; }
             Text { x: parent.width - 113px; y: 47px; text: "Alt + Shift + V"; color: #9fbee6; font-size: 11px; }
             Text { x: 15px; y: 79px; text: "Full screenshot"; color: #aeb9cb; font-size: 11px; }
             Text { x: parent.width - 113px; y: 79px; text: "Alt + Shift + F"; color: #9fbee6; font-size: 11px; }
+            Text { x: 15px; y: 111px; text: "Record GIF"; color: #aeb9cb; font-size: 11px; }
+            Text { x: parent.width - 113px; y: 111px; text: "Alt + Shift + G"; color: #9fbee6; font-size: 11px; }
         }
         Rectangle {
             height: 28px; border-radius: 5px; background: folder-touch.has-hover ? #25344a : #1b2737;

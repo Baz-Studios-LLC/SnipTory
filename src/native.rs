@@ -1,7 +1,7 @@
 //! Win32 owns the tray, global shortcuts and physical-pixel region selector on
 //! one blocking message-loop thread. Slint owns the gallery on the main thread.
 use crate::{HistoryWindow, StoreCommand, capture, clipboard, status};
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use slint::ComponentHandle;
 use std::{
     cell::RefCell,
@@ -31,6 +31,13 @@ const TRAY: u32 = WM_APP + 2;
 pub enum Command {
     Capture,
     FullCapture,
+    RecordGif,
+    BeginRecording(RECT),
+    StopRecording,
+    CancelRecording,
+    RecordingFinished(Result<Option<crate::recording::RecordedGif>, String>),
+    CopyGif(std::path::PathBuf, bool),
+    Exit,
     History,
     CopyPaste(image::RgbaImage),
     Notify(String),
@@ -96,6 +103,7 @@ pub fn fatal(message: &str) {
 }
 
 struct Selection {
+    kind: CaptureKind,
     desktop: capture::Desktop,
     paint: PaintBuffer,
     anchor: Option<POINT>,
@@ -151,6 +159,12 @@ impl Drop for PaintBuffer {
 enum CaptureKind {
     Region,
     Full,
+    Gif,
+}
+struct RecordingSession {
+    control: crate::recording::Control,
+    started: Instant,
+    stopped_elapsed: Option<std::time::Duration>,
 }
 struct State {
     owner: HWND,
@@ -167,11 +181,17 @@ struct State {
     taskbar_created: u32,
     restarting: bool,
     preferences: crate::settings::Shared,
+    recording_bar: slint::Weak<crate::RecordingBar>,
+    recording: Option<RecordingSession>,
+    recording_pending: bool,
+    quit_after_recording: bool,
+    bridge: Bridge,
 }
 thread_local! { static STATE: RefCell<Option<State>> = const { RefCell::new(None) }; }
 
 pub fn start(
     ui: slint::Weak<HistoryWindow>,
+    recording_bar: slint::Weak<crate::RecordingBar>,
     store: mpsc::Sender<StoreCommand>,
     preferences: crate::settings::Shared,
 ) -> Result<Bridge> {
@@ -179,6 +199,10 @@ pub fn start(
     let (ready_tx, ready_rx) = mpsc::sync_channel(1);
     let hwnd = Arc::new(AtomicIsize::new(0));
     let published = hwnd.clone();
+    let thread_bridge = Bridge {
+        tx: tx.clone(),
+        hwnd: hwnd.clone(),
+    };
     std::thread::Builder::new().name("sniptory-win32".into()).spawn(move || {
         // SAFETY: all windows, hotkeys, GDI resources and the tray icon below
         // belong to this thread and are destroyed before it exits.
@@ -193,12 +217,12 @@ pub fn start(
                 let icon = make_icon()?;
                 let taskbar_created = RegisterWindowMessageW(w!("TaskbarCreated"));
                 STATE.with(|s| *s.borrow_mut() = Some(State { owner, overlay: HWND::default(), icon, ui, store, commands: rx,
-                    selection: None, capture_request: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences }));
+                    selection: None, capture_request: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences, recording_bar, recording:None, recording_pending:false, quit_after_recording:false, bridge:thread_bridge }));
                 let hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND,None,Some(foreground_changed),0,0,WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
                 STATE.with(|s| s.borrow_mut().as_mut().unwrap().foreground_hook = hook);
                 if hook.is_invalid() { notify("Live focus tracking is unavailable. Focus your destination before opening History."); }
                 add_tray(owner, icon)?;
-                for (id,key,modifiers,label) in [(1,0x53,MOD_ALT | MOD_SHIFT,"Alt+Shift+S"),(2,0x56,MOD_ALT | MOD_SHIFT,"Alt+Shift+V"),(3,0x46,MOD_ALT | MOD_SHIFT,"Alt+Shift+F")] {
+                for (id,key,modifiers,label) in [(1,0x53,MOD_ALT | MOD_SHIFT,"Alt+Shift+S"),(2,0x56,MOD_ALT | MOD_SHIFT,"Alt+Shift+V"),(3,0x46,MOD_ALT | MOD_SHIFT,"Alt+Shift+F"),(4,0x47,MOD_ALT | MOD_SHIFT,"Alt+Shift+G")] {
                     if RegisterHotKey(Some(owner), id, modifiers | MOD_NOREPEAT, key).is_err() {
                         notify(&format!("{label} is already in use. Capture and history remain available from the tray."));
                     }
@@ -216,6 +240,8 @@ pub fn start(
                 if !state.foreground_hook.is_invalid() { let _ = UnhookWinEvent(state.foreground_hook); }
                 let _ = UnregisterHotKey(Some(state.owner),1); let _ = UnregisterHotKey(Some(state.owner),2);
                 let _ = UnregisterHotKey(Some(state.owner),3);
+                let _ = UnregisterHotKey(Some(state.owner),4);
+                if let Some(recording) = state.recording { recording.control.cancel(); }
                 let mut data = NOTIFYICONDATAW { cbSize: size_of::<NOTIFYICONDATAW>() as u32, hWnd: state.owner, uID: 1, ..Default::default() };
                 let _ = Shell_NotifyIconW(NIM_DELETE, &mut data);
                 let _ = DestroyWindow(state.owner); let _ = DestroyIcon(state.icon);
@@ -306,7 +332,8 @@ fn show_history() {
     STATE.with(|s| {
         if let Some(s) = s.borrow().as_ref() {
             let _ = s.store.send(StoreCommand::Load(60));
-            let _ = s.ui.upgrade_in_event_loop(|ui| unsafe {
+            let recording = s.recording.is_some() || s.recording_pending;
+            let _ = s.ui.upgrade_in_event_loop(move |ui| unsafe {
                 ui.set_show_options(false);
                 let mut cursor = POINT::default();
                 let _ = GetCursorPos(&mut cursor);
@@ -338,6 +365,14 @@ fn show_history() {
                 ui.invoke_prepare();
                 if let Some(handle) = crate::hwnd(&ui) {
                     let hwnd = HWND(handle as *mut _);
+                    let _ = SetWindowDisplayAffinity(
+                        hwnd,
+                        if recording {
+                            WDA_EXCLUDEFROMCAPTURE
+                        } else {
+                            WDA_NONE
+                        },
+                    );
                     install_history_title_bar(hwnd);
                     let _ = SetWindowPos(
                         hwnd,
@@ -377,6 +412,10 @@ fn prepare_capture(kind: CaptureKind) {
     if restarting() {
         return;
     }
+    if recording_busy() {
+        notify("Stop the current GIF before starting another capture.");
+        return;
+    }
     if STATE.with(|s| {
         s.borrow()
             .as_ref()
@@ -409,7 +448,7 @@ fn prepare_capture(kind: CaptureKind) {
     });
 }
 
-fn create_selection() -> Result<()> {
+fn create_selection(kind: CaptureKind) -> Result<()> {
     if restarting() {
         return Ok(());
     }
@@ -433,6 +472,7 @@ fn create_selection() -> Result<()> {
         let paint = PaintBuffer::new(w, h)?;
         STATE.with(|s| {
             s.borrow_mut().as_mut().unwrap().selection = Some(Selection {
+                kind,
                 desktop,
                 paint,
                 anchor: None,
@@ -477,6 +517,234 @@ fn full_screenshot() -> Result<()> {
     Ok(())
 }
 
+fn recording_busy() -> bool {
+    STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .is_some_and(|s| s.recording_pending || s.recording.is_some())
+    })
+}
+
+fn prepare_recording(region: RECT) {
+    let (bar, bridge) = STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let s = s.as_mut().unwrap();
+        s.recording_pending = true;
+        (s.recording_bar.clone(), s.bridge.clone())
+    });
+    let _ = bar.upgrade_in_event_loop(move |bar| {
+        let result: Result<()> = (|| {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            unsafe {
+                let monitor = MonitorFromRect(&region, MONITOR_DEFAULTTONEAREST);
+                let mut info = MONITORINFO {
+                    cbSize: size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                GetMonitorInfoW(monitor, &mut info).ok()?;
+                let mut dx = 96;
+                let mut dy = 96;
+                let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+                let scale = dx as f32 / 96.;
+                let width = (312. * scale) as u32;
+                let height = (52. * scale) as u32;
+                bar.set_finishing(false);
+                bar.set_elapsed("0:00".into());
+                bar.window()
+                    .set_size(slint::PhysicalSize::new(width, height));
+                bar.window().set_position(slint::PhysicalPosition::new(
+                    info.rcWork.left + (info.rcWork.right - info.rcWork.left - width as i32) / 2,
+                    info.rcWork.bottom - height as i32 - (24. * scale) as i32,
+                ));
+                bar.show()?;
+                let window_handle = bar.window().window_handle();
+                let handle = window_handle.window_handle()?;
+                let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+                    bail!("Recording controls require Windows");
+                };
+                let hwnd = HWND(handle.hwnd.get() as *mut _);
+                let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                SetWindowLongPtrW(
+                    hwnd,
+                    GWL_EXSTYLE,
+                    (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize),
+                );
+                SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
+                    .context("Cannot exclude recording controls from capture")?;
+                let corner: u32 = 2;
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    (&corner as *const u32).cast(),
+                    4,
+                );
+                let _ = DwmFlush();
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => bridge.send(Command::BeginRecording(region)),
+            Err(error) => {
+                let _ = bar.hide();
+                bridge.send(Command::RecordingFinished(Err(format!("{error:#}"))));
+            }
+        }
+    });
+}
+
+fn start_recording(region: RECT) {
+    let (bridge, ui, owner) = STATE.with(|s| {
+        let s = s.borrow();
+        let s = s.as_ref().unwrap();
+        (s.bridge.clone(), s.ui.clone(), s.owner)
+    });
+    let result = crate::settings::root().and_then(|root| {
+        crate::recording::start(region, root, move |result| {
+            bridge.send(Command::RecordingFinished(result))
+        })
+    });
+    match result {
+        Ok(control) => {
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                let s = s.as_mut().unwrap();
+                s.recording_pending = false;
+                if s.quit_after_recording {
+                    control.stop();
+                }
+                s.recording = Some(RecordingSession {
+                    control,
+                    started: Instant::now(),
+                    stopped_elapsed: s.quit_after_recording.then_some(std::time::Duration::ZERO),
+                });
+            });
+            unsafe {
+                SetTimer(Some(owner), 3, 250, None);
+            }
+            let _ = ui.upgrade_in_event_loop(|ui| {
+                if let Some(handle) = crate::hwnd(&ui) {
+                    unsafe {
+                        let _ = SetWindowDisplayAffinity(
+                            HWND(handle as *mut _),
+                            WDA_EXCLUDEFROMCAPTURE,
+                        );
+                    }
+                }
+            });
+            ui_status("Recording GIF");
+        }
+        Err(error) => finish_recording(Err(format!("{error:#}"))),
+    }
+}
+
+fn stop_recording(cancel: bool) {
+    STATE.with(|s| {
+        if let Some(s) = s.borrow_mut().as_mut() {
+            if let Some(recording) = s.recording.as_mut() {
+                recording
+                    .stopped_elapsed
+                    .get_or_insert_with(|| recording.started.elapsed());
+                if cancel {
+                    recording.control.cancel();
+                } else {
+                    recording.control.stop();
+                }
+                let _ = s
+                    .recording_bar
+                    .upgrade_in_event_loop(|bar| bar.set_finishing(true));
+            }
+        }
+    });
+}
+
+fn finish_recording(mut result: Result<Option<crate::recording::RecordedGif>, String>) {
+    let cancelled = STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .and_then(|s| s.recording.as_ref())
+            .is_some_and(|s| s.control.cancelled())
+    });
+    if cancelled {
+        if let Ok(Some(recording)) = &result {
+            let _ = std::fs::remove_file(&recording.path);
+        }
+        result = Ok(None);
+    }
+    let (bar, ui, store, quit, owner) = STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let s = s.as_mut().unwrap();
+        s.recording = None;
+        s.recording_pending = false;
+        (
+            s.recording_bar.clone(),
+            s.ui.clone(),
+            s.store.clone(),
+            s.quit_after_recording,
+            s.owner,
+        )
+    });
+    unsafe {
+        let _ = KillTimer(Some(owner), 3);
+    }
+    let _ = bar.upgrade_in_event_loop(|bar| {
+        let _ = bar.hide();
+    });
+    let _ = ui.upgrade_in_event_loop(|ui| {
+        if let Some(handle) = crate::hwnd(&ui) {
+            unsafe {
+                let _ = SetWindowDisplayAffinity(HWND(handle as *mut _), WDA_NONE);
+            }
+        }
+    });
+    match result {
+        Ok(Some(recording)) => {
+            let _ = store.send(StoreCommand::SaveGif(recording));
+        }
+        Ok(None) => ui_status("GIF recording cancelled"),
+        Err(error) => notify(&format!("Recording failed: {error}")),
+    }
+    if quit {
+        let _ = store.send(StoreCommand::Exit);
+    }
+}
+
+fn request_exit() {
+    let busy = recording_busy();
+    STATE.with(|s| {
+        if let Some(s) = s.borrow_mut().as_mut() {
+            if busy {
+                s.quit_after_recording = true;
+            } else {
+                let _ = s.store.send(StoreCommand::Exit);
+            }
+        }
+    });
+    if busy {
+        stop_recording(false);
+    }
+}
+
+fn copy_gif(path: std::path::PathBuf, paste: bool) {
+    let (owner, target, ui, automatic) = STATE.with(|s| {
+        let s = s.borrow();
+        let s = s.as_ref().unwrap();
+        (
+            s.owner,
+            s.target,
+            s.ui.clone(),
+            s.preferences.lock().unwrap().paste_on_select,
+        )
+    });
+    if let Err(error) = clipboard::copy_gif(owner, &path) {
+        notify(&format!("{error:#}"));
+        return;
+    }
+    ui_status("GIF file copied · animation depends on the destination");
+    if paste && automatic {
+        restore_paste_target(owner.0 as isize, target.0 as isize, ui);
+    }
+}
+
 fn end_selection(commit: bool) {
     let data = STATE.with(|s| {
         let mut state = s.borrow_mut();
@@ -490,6 +758,29 @@ fn end_selection(commit: bool) {
         unsafe {
             let _ = ReleaseCapture();
             let _ = DestroyWindow(hwnd);
+        }
+        if matches!(selection.kind, CaptureKind::Gif) {
+            let region = selection.anchor.and_then(|anchor| {
+                let w = selection.desktop.pixels.width() as i32;
+                let h = selection.desktop.pixels.height() as i32;
+                let left = anchor.x.min(selection.current.x).clamp(0, w);
+                let top = anchor.y.min(selection.current.y).clamp(0, h);
+                let right = anchor.x.max(selection.current.x).clamp(0, w);
+                let bottom = anchor.y.max(selection.current.y).clamp(0, h);
+                (right > left && bottom > top).then_some(RECT {
+                    left: left + selection.desktop.left,
+                    top: top + selection.desktop.top,
+                    right: right + selection.desktop.left,
+                    bottom: bottom + selection.desktop.top,
+                })
+            });
+            drop(selection);
+            if commit {
+                if let Some(region) = region {
+                    prepare_recording(region);
+                }
+            }
+            return;
         }
         if commit {
             if let Some(anchor) = selection.anchor {
@@ -534,6 +825,10 @@ fn copy_paste(pixels: image::RgbaImage) {
         return;
     }
     let target_raw = target.0 as isize;
+    restore_paste_target(owner_raw, target_raw, ui);
+}
+
+fn restore_paste_target(owner_raw: isize, target_raw: isize, ui: slint::Weak<HistoryWindow>) {
     let _ = ui.upgrade_in_event_loop(move |_ui| unsafe {
         let target = HWND(target_raw as *mut _);
         if IsWindow(Some(target)).as_bool() {
@@ -624,10 +919,29 @@ unsafe extern "system" fn procedure(
                     match command {
                         Some(Command::Capture) => begin_capture(),
                         Some(Command::FullCapture) => prepare_capture(CaptureKind::Full),
+                        Some(Command::RecordGif) => prepare_capture(CaptureKind::Gif),
+                        Some(Command::BeginRecording(region)) => start_recording(region),
+                        Some(Command::StopRecording) => stop_recording(false),
+                        Some(Command::CancelRecording) => stop_recording(true),
+                        Some(Command::RecordingFinished(result)) => finish_recording(result),
+                        Some(Command::CopyGif(path, paste)) => copy_gif(path, paste),
+                        Some(Command::Exit) => request_exit(),
                         Some(Command::History) => show_history(),
                         Some(Command::CopyPaste(pixels)) => copy_paste(pixels),
                         Some(Command::Notify(text)) => notify(&text),
                         Some(Command::ApplyUpdate(manager, asset)) => {
+                            if recording_busy() {
+                                notify("Stop the GIF before restarting to update.");
+                                STATE.with(|s| {
+                                    if let Some(s) = s.borrow().as_ref() {
+                                        let _ = s.ui.upgrade_in_event_loop(|ui| {
+                                            ui.set_update_busy(false);
+                                            ui.set_update_label("Restart & update".into());
+                                        });
+                                    }
+                                });
+                                continue;
+                            }
                             STATE.with(|s| s.borrow_mut().as_mut().unwrap().restarting = true);
                             let _ = KillTimer(Some(hwnd), 1);
                             let _ = KillTimer(Some(hwnd), 2);
@@ -660,6 +974,10 @@ unsafe extern "system" fn procedure(
                             });
                         }
                         Some(Command::Restart) => {
+                            if recording_busy() {
+                                notify("Stop the GIF before restarting SnipTory.");
+                                continue;
+                            }
                             STATE.with(|s| s.borrow_mut().as_mut().unwrap().restarting = true);
                             let _ = KillTimer(Some(hwnd), 1);
                             let _ = KillTimer(Some(hwnd), 2);
@@ -684,6 +1002,7 @@ unsafe extern "system" fn procedure(
                     1 => begin_capture(),
                     2 => show_history(),
                     3 => prepare_capture(CaptureKind::Full),
+                    4 => prepare_capture(CaptureKind::Gif),
                     _ => {}
                 }
                 return LRESULT(0);
@@ -699,7 +1018,8 @@ unsafe extern "system" fn procedure(
                 let request =
                     STATE.with(|s| s.borrow_mut().as_mut().unwrap().capture_request.take());
                 let result = match request {
-                    Some(CaptureKind::Region) => create_selection(),
+                    Some(CaptureKind::Region) => create_selection(CaptureKind::Region),
+                    Some(CaptureKind::Gif) => create_selection(CaptureKind::Gif),
                     Some(CaptureKind::Full) => full_screenshot(),
                     None => Ok(()),
                 };
@@ -742,6 +1062,26 @@ unsafe extern "system" fn procedure(
                 }
                 return LRESULT(0);
             }
+            WM_TIMER if wparam.0 == 3 => {
+                STATE.with(|s| {
+                    if let Some(s) = s.borrow().as_ref() {
+                        if let Some(recording) = s.recording.as_ref() {
+                            let elapsed = recording
+                                .stopped_elapsed
+                                .unwrap_or_else(|| recording.started.elapsed())
+                                .as_secs();
+                            let finishing = recording.control.stopping();
+                            let _ = s.recording_bar.upgrade_in_event_loop(move |bar| {
+                                bar.set_elapsed(
+                                    format!("{}:{:02}", elapsed / 60, elapsed % 60).into(),
+                                );
+                                bar.set_finishing(finishing);
+                            });
+                        }
+                    }
+                });
+                return LRESULT(0);
+            }
             TRAY => {
                 let event = lparam.0 as u32 & 0xffff;
                 if event == WM_LBUTTONUP || event == NIN_SELECT || event == (NIN_SELECT | 1) {
@@ -756,8 +1096,7 @@ unsafe extern "system" fn procedure(
                     10 => show_history(),
                     11 => begin_capture(),
                     12 => {
-                        let _ = slint::quit_event_loop();
-                        PostQuitMessage(0);
+                        request_exit();
                     }
                     13 => {
                         show_history();
@@ -851,7 +1190,7 @@ pub fn show_tray_menu(menu: &crate::TrayMenu) {
         let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
         let scale = dpi_x as f32 / 96.;
         let width = (282. * scale) as i32;
-        let height = (313. * scale) as i32;
+        let height = (304. * scale) as i32;
         let work = info.rcWork;
         let x = (point.x - width).clamp(work.left + 6, (work.right - width - 6).max(work.left + 6));
         let y =
@@ -938,6 +1277,11 @@ unsafe fn paint_selection(hwnd: HWND) {
             let w = desktop.pixels.width() as i32;
             let h = desktop.pixels.height() as i32;
             let info = capture::bitmap_info(w, h);
+            let accent = if matches!(selection.kind, CaptureKind::Gif) {
+                COLORREF(0x00786aef)
+            } else {
+                COLORREF(0x00df9f6e)
+            };
             StretchDIBits(
                 dc,
                 0,
@@ -953,7 +1297,12 @@ unsafe fn paint_selection(hwnd: HWND) {
                 DIB_RGB_COLORS,
                 SRCCOPY,
             );
-            let mut label = "Drag to capture a region   ·   Esc to cancel".to_string();
+            let mut label = if matches!(selection.kind, CaptureKind::Gif) {
+                "Drag to record a GIF   ·   Esc to cancel"
+            } else {
+                "Drag to capture a region   ·   Esc to cancel"
+            }
+            .to_string();
             let mut label_x = (w / 2 - 180).max(8);
             let mut label_y = 36;
             if let Some(anchor) = selection.anchor {
@@ -986,10 +1335,17 @@ unsafe fn paint_selection(hwnd: HWND) {
                     SRCCOPY,
                 );
                 let _ = RestoreDC(dc, -1);
-                let brush = CreateSolidBrush(COLORREF(0x00df9f6e));
+                let brush = CreateSolidBrush(accent);
                 FrameRect(dc, &region, brush);
                 let _ = DeleteObject(brush.into());
-                label = format!("{width} × {height} px   ·   Release to capture");
+                label = format!(
+                    "{width} × {height} px   ·   Release to {}",
+                    if matches!(selection.kind, CaptureKind::Gif) {
+                        "record"
+                    } else {
+                        "capture"
+                    }
+                );
                 label_x = x.clamp(8, (w - 360).max(8));
                 label_y = if y > 40 {
                     y - 36
@@ -1001,7 +1357,7 @@ unsafe fn paint_selection(hwnd: HWND) {
             // selector. Saved captures crop the untouched frozen desktop pixels.
             let cursor_x = selection.current.x.clamp(0, w - 1);
             let cursor_y = selection.current.y.clamp(0, h - 1);
-            let pen = CreatePen(PS_SOLID, 1, COLORREF(0x00df9f6e));
+            let pen = CreatePen(PS_SOLID, 1, accent);
             let previous_pen = SelectObject(dc, pen.into());
             let _ = MoveToEx(dc, 0, cursor_y, None);
             let _ = LineTo(dc, w, cursor_y);

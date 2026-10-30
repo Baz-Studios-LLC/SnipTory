@@ -4,6 +4,7 @@ mod capture;
 mod clipboard;
 mod history;
 mod native;
+mod recording;
 mod settings;
 mod updates;
 
@@ -20,11 +21,13 @@ thread_local! {
 
 pub enum StoreCommand {
     Save(image::RgbaImage),
+    SaveGif(recording::RecordedGif),
     Load(usize),
     Paste(PathBuf),
     ApplyUpdate(velopack::UpdateManager, velopack::VelopackAsset),
     Settings(settings::Settings),
     Restart,
+    Exit,
 }
 
 pub fn status(ui: &slint::Weak<HistoryWindow>, message: impl Into<String>) {
@@ -80,7 +83,22 @@ fn run() -> Result<()> {
     }
     let weak = ui.as_weak();
     let (store_tx, store_rx) = mpsc::channel();
-    let bridge = native::start(weak.clone(), store_tx.clone(), preferences.clone())?;
+    let recording_bar = RecordingBar::new()?;
+    let bridge = native::start(
+        weak.clone(),
+        recording_bar.as_weak(),
+        store_tx.clone(),
+        preferences.clone(),
+    )?;
+    let b = bridge.clone();
+    recording_bar.on_stop(move || b.send(native::Command::StopRecording));
+    let b = bridge.clone();
+    recording_bar.on_cancel(move || b.send(native::Command::CancelRecording));
+    let b = bridge.clone();
+    recording_bar.window().on_close_requested(move || {
+        b.send(native::Command::CancelRecording);
+        slint::CloseRequestResponse::KeepWindowShown
+    });
     let entries = Rc::new(RefCell::new(Vec::<history::Entry>::new()));
     let entries_for_worker = entries.clone();
     let storage_root = root.clone();
@@ -88,6 +106,7 @@ fn run() -> Result<()> {
     let (ready_tx, ready_rx) = mpsc::sync_channel(1);
     let worker_ui = weak.clone();
     let worker_bridge = bridge.clone();
+    let worker_store = store_tx.clone();
     // UI-only state is carried through a Send wrapper supported by Slint Weak;
     // the actual gallery data is updated in the UI event loop below.
     let (gallery_tx, gallery_rx) =
@@ -111,6 +130,12 @@ fn run() -> Result<()> {
                         StoreCommand::Save(pixels) => {
                             history.save(&pixels)?;
                             status(&worker_ui, "Saved locally. Ready when you are.");
+                        }
+                        StoreCommand::SaveGif(recording) => {
+                            history.save_gif(&recording)?;
+                            worker_bridge.send(native::Command::CopyGif(recording.path, false));
+                            status(&worker_ui, "GIF saved to History");
+                            let _ = worker_store.send(StoreCommand::Load(60));
                         }
                         StoreCommand::Load(limit) => {
                             let mut loaded = Vec::new();
@@ -148,8 +173,19 @@ fn run() -> Result<()> {
                             }
                         }
                         StoreCommand::Paste(path) => {
-                            let pixels = image::open(path)?.to_rgba8();
-                            worker_bridge.send(native::Command::CopyPaste(pixels));
+                            if path
+                                .extension()
+                                .is_some_and(|extension| extension.eq_ignore_ascii_case("gif"))
+                            {
+                                worker_bridge.send(native::Command::CopyGif(path, true));
+                            } else {
+                                let pixels = image::open(path)?.to_rgba8();
+                                worker_bridge.send(native::Command::CopyPaste(pixels));
+                            }
+                        }
+                        StoreCommand::Exit => {
+                            worker_bridge.send(native::Command::Quit);
+                            let _ = slint::quit_event_loop();
                         }
                         StoreCommand::ApplyUpdate(manager, asset) => {
                             // This command follows all prior saves in the same
@@ -240,7 +276,7 @@ fn run() -> Result<()> {
         let _ = tx.send(StoreCommand::Settings(settings.clone()));
     });
     ui.on_open_folder(move || {
-        native::open_folder(&storage_root.join("captures/screenshots"));
+        native::open_folder(&storage_root.join("captures"));
     });
     let b = bridge.clone();
     ui.on_restart_app(move || {
@@ -270,11 +306,11 @@ fn run() -> Result<()> {
             "history" => b.send(native::Command::History),
             "capture" => b.send(native::Command::Capture),
             "full-capture" => b.send(native::Command::FullCapture),
+            "gif" => b.send(native::Command::RecordGif),
             "options" => b.send(native::Command::Options),
             "updates" => b.send(native::Command::Updates),
             "exit" => {
-                b.send(native::Command::Quit);
-                let _ = slint::quit_event_loop();
+                b.send(native::Command::Exit);
             }
             _ => {}
         }
@@ -294,7 +330,17 @@ fn run() -> Result<()> {
                 model.push(CaptureItem {
                     preview: slint::Image::from_rgba8(pixels),
                     label: date.into(),
-                    dimensions: format!("{} × {}  ·  PNG", entry.width, entry.height).into(),
+                    dimensions: match entry.duration_ms {
+                        Some(duration) => format!(
+                            "{} × {} · {:.1}s",
+                            entry.width,
+                            entry.height,
+                            duration as f64 / 1000.
+                        ),
+                        None => format!("{} × {} · PNG", entry.width, entry.height),
+                    }
+                    .into(),
+                    animated: entry.duration_ms.is_some(),
                 });
             }
             *entries_for_worker.borrow_mut() = loaded;

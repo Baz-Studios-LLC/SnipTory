@@ -1,6 +1,6 @@
 [package]
 name = "sniptory"
-version = "0.0.2"
+version = "0.0.3"
 license = "MIT"
 authors = ["Baz Studios LLC"]
 repository = "https://github.com/Baz-Studios-LLC/SnipTory"

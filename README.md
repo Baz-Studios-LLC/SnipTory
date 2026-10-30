@@ -6,7 +6,7 @@
 
 ## Install and update
 
-Install **SnipTory-v002-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v003-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -69,7 +69,7 @@ Windows can prevent focus changes and synthetic input, especially into elevated 
 
 ## Validation so far
 
-The app builds and launches on Windows. Automated checks cover reversed/clamped region cropping, PNG and thumbnail persistence across database reopening, and integer release labels. An earlier manual native test passed an actual desktop-pixel roundtrip through the Windows CF_DIB clipboard. The initial gallery was visually inspected and selection cancellation was exercised. Full drag-to-capture, paste-back, current UI changes, installation, and the first version-to-version update are left to the user, as requested. Mixed-DPI hardware, protected content, and elevated paste targets have not been exercised.
+The app builds and launches on Windows. Automated checks cover reversed/clamped region cropping, PNG and thumbnail persistence across database reopening, and integer release labels. An earlier manual native test passed an actual desktop-pixel roundtrip through the Windows CF_DIB clipboard. The gallery was visually inspected and selection cancellation was exercised. The corrected gear and X controls were exercised in the running Windows app: Options opened, X hid the window, and the tray process remained running. Full drag-to-capture, paste-back, current UI changes, installation, and the first version-to-version update are left to the user, as requested. Mixed-DPI hardware, protected content, and elevated paste targets have not been exercised.
 
 Next: user feedback on Phase 1's capture/paste flow and visual design, followed by reliability fixes and then GIF recording.
 
@@ -82,7 +82,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v002/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v003/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

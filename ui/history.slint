@@ -19,6 +19,20 @@ component Keycap inherits Rectangle {
     keytext := Text { text: root.label; font-size: 10px; color: #a8afbd; horizontal-alignment: center; vertical-alignment: center; }
 }
 
+component HeaderButton inherits TouchArea {
+    in property <image> glyph;
+    in property <bool> active;
+    width: 28px;
+    height: 28px;
+    mouse-cursor: pointer;
+    z: 1;
+    Rectangle {
+        border-radius: 7px;
+        background: root.active ? #1d304a : root.has-hover ? #2a2f39 : transparent;
+        Image { x: 5px; y: 5px; width: 18px; height: 18px; source: root.glyph; colorize: root.active ? #8ab6ed : #939cad; }
+    }
+}
+
 export component HistoryWindow inherits Window {
     title: "SnipTory";
     preferred-width: 496px;
@@ -44,7 +58,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v002";
+    in property <string> release-version: "v003";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -84,7 +98,10 @@ export component HistoryWindow inherits Window {
                 // Entering Windows' move loop consumes the release needed by
                 // their clicked callbacks, even when the drag area is behind them.
                 TouchArea {
+                    x: 0px;
+                    y: 0px;
                     width: parent.width - 94px;
+                    height: parent.height;
                     pointer-event(e) => { if e.kind == PointerEventKind.down { root.drag(); } }
                 }
                     Rectangle {
@@ -95,18 +112,16 @@ export component HistoryWindow inherits Window {
                     }
                     Text { x: 66px; y: 16px; height: 25px; text: "SnipTory"; font-size: 18px; font-weight: 700; color: #f2f3f8; }
                     Text { x: 66px; y: 43px; height: 13px; text: "CAPTURE. RECALL. PASTE."; font-size: 9px; letter-spacing: 1.1px; color: #777f90; }
-                    Rectangle {
-                        x: parent.width - 78px; y: 22px; width: 28px; height: 28px; border-radius: 7px;
-                        background: gear-touch.has-hover || root.show-options ? #1d304a : transparent;
-                        Image { source: @image-url("icons/gear.svg"); width: 18px; height: 18px; x: 5px; y: 5px; colorize: root.show-options ? #8ab6ed : #939cad; }
-                        gear-touch := TouchArea { clicked => { root.show-options = !root.show-options; } }
+                    HeaderButton {
+                        x: parent.width - 78px; y: 22px;
+                        glyph: @image-url("icons/gear.svg");
+                        active: root.show-options;
+                        clicked => { root.show-options = !root.show-options; }
                     }
-                    Rectangle {
+                    HeaderButton {
                         x: parent.width - 44px; y: 22px;
-                        width: 28px; height: 28px; border-radius: 7px;
-                        background: close-touch.has-hover ? #2a2f39 : transparent;
-                        Image { source: @image-url("icons/close.svg"); width: 18px; height: 18px; x: 5px; y: 5px; colorize: #939cad; }
-                        close-touch := TouchArea { clicked => { root.dismiss(); } }
+                        glyph: @image-url("icons/close.svg");
+                        clicked => { root.dismiss(); }
                     }
             }
             Rectangle { height: 1px; background: #262b34; }

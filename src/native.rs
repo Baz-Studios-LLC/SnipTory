@@ -18,7 +18,10 @@ use windows::{
         Foundation::*,
         Graphics::{Dwm::*, Gdi::*},
         System::{LibraryLoader::*, Threading::*},
-        UI::{HiDpi::*, Input::KeyboardAndMouse::*, Shell::*, WindowsAndMessaging::*},
+        UI::{
+            Accessibility::*, HiDpi::*, Input::KeyboardAndMouse::*, Shell::*,
+            WindowsAndMessaging::*,
+        },
     },
     core::*,
 };
@@ -105,7 +108,8 @@ struct State {
     commands: mpsc::Receiver<Command>,
     selection: Option<Selection>,
     target: HWND,
-    pending_paste: Option<Instant>,
+    pending_paste: Option<(Instant, HWND)>,
+    foreground_hook: HWINEVENTHOOK,
     taskbar_created: u32,
     restarting: bool,
     preferences: crate::settings::Shared,
@@ -135,7 +139,10 @@ pub fn start(
                 let icon = make_icon()?;
                 let taskbar_created = RegisterWindowMessageW(w!("TaskbarCreated"));
                 STATE.with(|s| *s.borrow_mut() = Some(State { owner, overlay: HWND::default(), icon, ui, store, commands: rx,
-                    selection: None, target: GetForegroundWindow(), pending_paste: None, taskbar_created, restarting: false, preferences }));
+                    selection: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences }));
+                let hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND,None,Some(foreground_changed),0,0,WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                STATE.with(|s| s.borrow_mut().as_mut().unwrap().foreground_hook = hook);
+                if hook.is_invalid() { notify("Live focus tracking is unavailable. Focus your destination before opening History."); }
                 add_tray(owner, icon)?;
                 for (id,key,modifiers,label) in [(1,0x53,MOD_ALT | MOD_SHIFT,"Alt+Shift+S"),(2,0x56,MOD_ALT | MOD_SHIFT,"Alt+Shift+V")] {
                     if RegisterHotKey(Some(owner), id, modifiers | MOD_NOREPEAT, key).is_err() {
@@ -152,6 +159,7 @@ pub fn start(
             while GetMessageW(&mut message, None, 0,0).0 > 0 { let _ = TranslateMessage(&message); DispatchMessageW(&message); }
             let state = STATE.with(|state| state.borrow_mut().take());
             if let Some(state) = state {
+                if !state.foreground_hook.is_invalid() { let _ = UnhookWinEvent(state.foreground_hook); }
                 let _ = UnregisterHotKey(Some(state.owner),1); let _ = UnregisterHotKey(Some(state.owner),2);
                 let mut data = NOTIFYICONDATAW { cbSize: size_of::<NOTIFYICONDATAW>() as u32, hWnd: state.owner, uID: 1, ..Default::default() };
                 let _ = Shell_NotifyIconW(NIM_DELETE, &mut data);
@@ -194,16 +202,44 @@ fn notify(message: &str) {
 
 fn remember_target() {
     unsafe {
-        let foreground = GetForegroundWindow();
+        remember_window(GetForegroundWindow());
+    }
+}
+
+fn remember_window(foreground: HWND) {
+    unsafe {
         let mut process = 0;
         GetWindowThreadProcessId(foreground, Some(&mut process));
-        if process != GetCurrentProcessId() && !foreground.is_invalid() {
+        let mut class = [0u16; 128];
+        let length = GetClassNameW(foreground, &mut class);
+        let class = String::from_utf16_lossy(&class[..length.max(0) as usize]);
+        let shell = matches!(
+            class.as_str(),
+            "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW"
+        );
+        if process != 0 && process != GetCurrentProcessId() && !foreground.is_invalid() && !shell {
             STATE.with(|s| {
                 if let Some(s) = s.borrow_mut().as_mut() {
                     s.target = foreground;
                 }
             });
         }
+    }
+}
+
+unsafe extern "system" fn foreground_changed(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    hwnd: HWND,
+    _object: i32,
+    _child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    // Out-of-context events are dispatched on the native message-loop thread.
+    // Track handles only; never inspect or persist another application's content.
+    if event == EVENT_SYSTEM_FOREGROUND {
+        remember_window(hwnd);
     }
 }
 
@@ -247,6 +283,7 @@ fn show_history() {
                 ui.invoke_prepare();
                 if let Some(handle) = crate::hwnd(&ui) {
                     let hwnd = HWND(handle as *mut _);
+                    install_history_title_bar(hwnd);
                     let _ = SetWindowPos(
                         hwnd,
                         Some(HWND_TOPMOST),
@@ -408,20 +445,17 @@ fn copy_paste(pixels: image::RgbaImage) {
         return;
     }
     let target_raw = target.0 as isize;
-    let _ = ui.upgrade_in_event_loop(move |ui| {
-        let _ = ui.hide();
-        unsafe {
-            let target = HWND(target_raw as *mut _);
-            if IsWindow(Some(target)).as_bool() {
-                let _ = SetForegroundWindow(target);
-            }
-            let _ = PostMessageW(
-                Some(HWND(owner_raw as *mut _)),
-                WM_APP + 4,
-                WPARAM(0),
-                LPARAM(0),
-            );
+    let _ = ui.upgrade_in_event_loop(move |_ui| unsafe {
+        let target = HWND(target_raw as *mut _);
+        if IsWindow(Some(target)).as_bool() {
+            let _ = SetForegroundWindow(target);
         }
+        let _ = PostMessageW(
+            Some(HWND(owner_raw as *mut _)),
+            WM_APP + 4,
+            WPARAM(0),
+            LPARAM(target_raw),
+        );
     });
 }
 
@@ -579,7 +613,8 @@ unsafe extern "system" fn procedure(
             }
             m if m == WM_APP + 4 => {
                 STATE.with(|s| {
-                    s.borrow_mut().as_mut().unwrap().pending_paste = Some(Instant::now())
+                    s.borrow_mut().as_mut().unwrap().pending_paste =
+                        Some((Instant::now(), HWND(lparam.0 as *mut _)))
                 });
                 SetTimer(Some(hwnd), 1, 30, None);
                 return LRESULT(0);
@@ -590,14 +625,18 @@ unsafe extern "system" fn procedure(
                     let s = s.as_ref().unwrap();
                     (
                         clipboard::modifiers_released(),
-                        s.pending_paste.is_some_and(|t| t.elapsed().as_secs() >= 2),
-                        s.target,
+                        s.pending_paste
+                            .is_some_and(|(t, _)| t.elapsed().as_secs() >= 2),
+                        s.pending_paste
+                            .map(|(_, target)| target)
+                            .unwrap_or(s.target),
                     )
                 });
-                if ready || expired {
+                let focused = GetForegroundWindow() == target;
+                if paste_can_finish(ready, focused, expired) {
                     let _ = KillTimer(Some(hwnd), 1);
                     STATE.with(|s| s.borrow_mut().as_mut().unwrap().pending_paste = None);
-                    if !ready || GetForegroundWindow() != target {
+                    if !ready || !focused {
                         notify("Image copied. Focus your app and press Ctrl+V to paste.");
                     } else if let Err(error) = clipboard::paste() {
                         notify(&format!("{error:#}"));
@@ -647,6 +686,10 @@ unsafe extern "system" fn procedure(
         }
         DefWindowProcW(hwnd, message, wparam, lparam)
     }
+}
+
+fn paste_can_finish(modifiers_released: bool, focus_restored: bool, expired: bool) -> bool {
+    (modifiers_released && focus_restored) || expired
 }
 
 fn mouse_point(value: LPARAM) -> POINT {
@@ -898,15 +941,120 @@ unsafe fn paint_selection(hwnd: HWND) {
     }
 }
 
-pub fn drag(handle: isize) {
+thread_local! {
+    static HISTORY_PROC: RefCell<Option<(isize,isize)>> = const { RefCell::new(None) };
+}
+
+fn in_title_bar(x: i32, y: i32, width: i32, dpi: u32) -> bool {
+    let scale = dpi.max(96) as f64 / 96.;
+    x >= 0 && y >= 0 && (y as f64) < 73. * scale && (x as f64) < width as f64 - 94. * scale
+}
+
+unsafe fn install_history_title_bar(hwnd: HWND) {
+    let installed = HISTORY_PROC.with(|state| {
+        state
+            .borrow()
+            .as_ref()
+            .is_some_and(|(handle, _)| *handle == hwnd.0 as isize)
+    });
+    if !installed {
+        // SAFETY: subclass only our Slint window, on its owning UI thread.
+        let previous = unsafe {
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, history_procedure as *const () as isize)
+        };
+        if previous != 0 {
+            HISTORY_PROC.with(|state| *state.borrow_mut() = Some((hwnd.0 as isize, previous)));
+        }
+    }
+}
+
+unsafe extern "system" fn history_procedure(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    // SAFETY: WM_NCHITTEST coordinates are physical screen pixels under the
+    // per-monitor-v2 manifest. Convert to client pixels, then use the window's
+    // current DPI so the 73 logical-pixel title bar follows monitor changes.
     unsafe {
-        let _ = ReleaseCapture();
-        SendMessageW(
-            HWND(handle as *mut _),
-            WM_NCLBUTTONDOWN,
-            Some(WPARAM(HTCAPTION as usize)),
-            Some(LPARAM(0)),
-        );
+        if message == WM_NCHITTEST {
+            let mut point = mouse_point(lparam);
+            let mut client = RECT::default();
+            if ScreenToClient(hwnd, &mut point).as_bool()
+                && GetClientRect(hwnd, &mut client).is_ok()
+                && in_title_bar(
+                    point.x,
+                    point.y,
+                    client.right - client.left,
+                    GetDpiForWindow(hwnd),
+                )
+            {
+                return LRESULT(HTCAPTION as isize);
+            }
+        }
+        let previous = HISTORY_PROC.with(|state| {
+            state
+                .borrow()
+                .as_ref()
+                .filter(|(handle, _)| *handle == hwnd.0 as isize)
+                .map(|(_, previous)| *previous)
+        });
+        let result = if let Some(previous) = previous {
+            CallWindowProcW(
+                std::mem::transmute::<isize, WNDPROC>(previous),
+                hwnd,
+                message,
+                wparam,
+                lparam,
+            )
+        } else {
+            DefWindowProcW(hwnd, message, wparam, lparam)
+        };
+        if message == WM_NCDESTROY {
+            HISTORY_PROC.with(|state| *state.borrow_mut() = None);
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod title_bar_tests {
+    use super::in_title_bar;
+    #[test]
+    fn content_and_buttons_are_never_draggable_across_dpi() {
+        for dpi in [96, 144, 192] {
+            let scale = dpi as f64 / 96.;
+            let pixel = |value: f64| (value * scale).ceil() as i32;
+            let width = pixel(496.);
+            assert!(in_title_bar(pixel(100.), pixel(35.), width, dpi));
+            for (x, y) in [
+                (432., 35.),
+                (466., 35.),
+                (100., 73.),
+                (200., 300.),
+                (200., 620.),
+            ] {
+                assert!(
+                    !in_title_bar(pixel(x), pixel(y), width, dpi),
+                    "unexpected drag at {x},{y}, dpi {dpi}"
+                );
+            }
+            assert!(!in_title_bar(-1, 0, width, dpi));
+        }
+    }
+}
+
+#[cfg(test)]
+mod paste_focus_tests {
+    use super::paste_can_finish;
+    #[test]
+    fn paste_waits_for_focus_even_after_modifiers_are_released() {
+        assert!(!paste_can_finish(true, false, false));
+        assert!(!paste_can_finish(false, true, false));
+        assert!(paste_can_finish(true, true, false));
+        assert!(paste_can_finish(true, false, true));
+        assert!(paste_can_finish(false, true, true));
     }
 }
 

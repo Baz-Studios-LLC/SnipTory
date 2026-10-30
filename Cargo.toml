@@ -1,6 +1,6 @@
 [package]
 name = "sniptory"
-version = "0.0.3"
+version = "0.0.4"
 license = "MIT"
 authors = ["Baz Studios LLC"]
 repository = "https://github.com/Baz-Studios-LLC/SnipTory"
@@ -23,7 +23,7 @@ windows = { version = "0.62", features = [
     "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm",
     "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_LibraryLoader",
     "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell",
-    "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_Security", "Win32_System_Registry"
+    "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_Security", "Win32_System_Registry", "Win32_UI_Accessibility"
 ] }
 
 [build-dependencies]

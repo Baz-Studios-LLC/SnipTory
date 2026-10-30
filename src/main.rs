@@ -294,6 +294,7 @@ fn run() -> Result<()> {
     ui.on_paste(move |index| {
         if let Some(entry) = entries.borrow().get(index as usize) {
             if let Some(ui) = w.upgrade() {
+                ui.set_selected(index);
                 ui.set_status("Preparing image…".into());
             }
             let _ = tx.send(StoreCommand::Paste(entry.path.clone()));
@@ -326,14 +327,6 @@ fn run() -> Result<()> {
                     }
             };
             ui.set_selected(next.clamp(0, count - 1));
-        }
-    });
-    let w = ui.as_weak();
-    ui.on_drag(move || {
-        if let Some(ui) = w.upgrade() {
-            if let Some(hwnd) = hwnd(&ui) {
-                native::drag(hwnd);
-            }
         }
     });
     let w = ui.as_weak();

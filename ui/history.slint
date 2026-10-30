@@ -44,7 +44,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v001";
+    in property <string> release-version: "v002";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -80,7 +80,13 @@ export component HistoryWindow inherits Window {
             spacing: 0px;
             Rectangle {
                 height: 73px;
-                TouchArea { pointer-event(e) => { if e.kind == PointerEventKind.down { root.drag(); } } }
+                // Keep the native drag gesture outside the two header buttons.
+                // Entering Windows' move loop consumes the release needed by
+                // their clicked callbacks, even when the drag area is behind them.
+                TouchArea {
+                    width: parent.width - 94px;
+                    pointer-event(e) => { if e.kind == PointerEventKind.down { root.drag(); } }
+                }
                     Rectangle {
                         x: 22px; y: 20px;
                         width: 33px; height: 33px; border-radius: 10px;
@@ -110,6 +116,7 @@ export component HistoryWindow inherits Window {
                 paste-on-select <=> root.paste-on-select;
                 update-label: root.update-label;
                 update-busy: root.update-busy;
+                update-detail: root.update-detail;
                 back => { root.show-options = false; }
                 changed-setting(key,value) => { root.setting-changed(key,value); }
                 open-folder => { root.open-folder(); }
@@ -199,22 +206,16 @@ export component HistoryWindow inherits Window {
             }
             Rectangle { height: 1px; background: #262b34; }
             Rectangle {
-                height: 96px;
+                height: 82px;
                 Rectangle { x: 22px; y: 17px; width: 5px; height: 5px; border-radius: 3px; background: #88c9a8; }
                 Text { x: 33px; y: 10px; width: parent.width - 55px; height: 19px; vertical-alignment: center; text: root.status; font-size: 10px; color: #8b96a9; overflow: elide; }
                 Text { x: 22px; y: 35px; height: 16px; text: root.show-options ? "Preferences are saved on this device" : root.paste-on-select ? "Click to paste  ·  Arrow keys to explore" : "Click to copy  ·  Arrow keys to explore"; font-size: 10px; color: #646f82; }
                 Text { x: parent.width - 85px; y: 35px; height: 16px; text: "ESC to close"; font-size: 9px; color: #747f91; }
                 Rectangle {
-                    x: 20px; y: 64px; width: parent.width - 40px; height: 28px;
+                    x: 20px; y: 56px; width: parent.width - 40px; height: 20px;
                     background: transparent;
                     Text { x: 2px; y: 3px; height: 18px; text: root.release-version; color: #8294ae; font-size: 10px; }
-                    Text { x: 46px; y: 3px; width: max(0px,parent.width - 200px); height: 18px; text: root.update-detail; color: #79869b; font-size: 9px; overflow: elide; }
-                    Rectangle {
-                        x: parent.width - self.width; width: 136px; height: 24px; border-radius: 5px;
-                        background: update-touch.has-hover ? #1c314e : #182332;
-                        Text { text: root.update-label; horizontal-alignment: center; vertical-alignment: center; color: #a9c8ef; font-size: 10px; }
-                        update-touch := TouchArea { enabled: !root.update-busy; clicked => { root.update-action(); } }
-                    }
+                    Text { x: 46px; y: 3px; width: max(0px,parent.width - 48px); height: 18px; text: root.update-detail; color: #79869b; font-size: 9px; overflow: elide; }
                 }
             }
         }

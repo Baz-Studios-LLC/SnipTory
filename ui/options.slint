@@ -29,6 +29,7 @@ export component OptionsPanel inherits Rectangle {
     callback update();
     in property <string> update-label;
     in property <bool> update-busy;
+    in property <string> update-detail;
     background: transparent;
     vertical-stretch: 1;
     ScrollView {
@@ -83,6 +84,7 @@ export component OptionsPanel inherits Rectangle {
                 check-touch := TouchArea { enabled: !root.update-busy; clicked => { root.update(); } }
             }
         }
+        Text { text: root.update-detail; color: #8294ae; font-size: 10px; wrap: word-wrap; }
       }
     }
 }

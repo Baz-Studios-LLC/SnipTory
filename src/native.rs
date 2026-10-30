@@ -104,7 +104,8 @@ pub fn fatal(message: &str) {
 
 struct Selection {
     kind: CaptureKind,
-    desktop: capture::Desktop,
+    desktop: Option<capture::Desktop>,
+    bounds: RECT,
     paint: PaintBuffer,
     anchor: Option<POINT>,
     current: POINT,
@@ -115,6 +116,7 @@ struct PaintBuffer {
     dc: HDC,
     bitmap: HBITMAP,
     previous: HGDIOBJ,
+    bits: *mut u8,
 }
 impl PaintBuffer {
     fn new(width: i32, height: i32) -> Result<Self> {
@@ -130,17 +132,34 @@ impl PaintBuffer {
                 ReleaseDC(None, screen);
                 bail!("Could not create selection buffer");
             }
-            let bitmap = CreateCompatibleBitmap(screen, width, height);
+            let mut bits = std::ptr::null_mut();
+            let bitmap = CreateDIBSection(
+                Some(screen),
+                &capture::bitmap_info(width, height),
+                DIB_RGB_COLORS,
+                &mut bits,
+                None,
+                0,
+            );
             ReleaseDC(None, screen);
-            if bitmap.is_invalid() {
-                let _ = DeleteDC(dc);
-                bail!("Could not allocate selection buffer");
-            }
+            let bitmap = match bitmap {
+                Ok(bitmap) if !bits.is_null() => bitmap,
+                Ok(bitmap) => {
+                    let _ = DeleteObject(bitmap.into());
+                    let _ = DeleteDC(dc);
+                    bail!("Selection buffer is unavailable");
+                }
+                Err(error) => {
+                    let _ = DeleteDC(dc);
+                    return Err(error.into());
+                }
+            };
             let previous = SelectObject(dc, bitmap.into());
             Ok(Self {
                 dc,
                 bitmap,
                 previous,
+                bits: bits.cast(),
             })
         }
     }
@@ -453,15 +472,32 @@ fn create_selection(kind: CaptureKind) -> Result<()> {
         return Ok(());
     }
     unsafe {
-        // Flush DWM after hiding history, then freeze the desktop before creating
-        // any selector. The output is cropped from this immutable source.
+        // Screenshots use an immutable source. GIF selection is a translucent
+        // surface over the live desktop and never captures a frozen background.
         let _ = DwmFlush();
-        let desktop = capture::desktop()?;
-        let (left, top, w, h) = (
-            desktop.left,
-            desktop.top,
-            desktop.pixels.width() as i32,
-            desktop.pixels.height() as i32,
+        let desktop = if matches!(kind, CaptureKind::Gif) {
+            None
+        } else {
+            Some(capture::desktop()?)
+        };
+        let (left, top, w, h) = if let Some(desktop) = desktop.as_ref() {
+            (
+                desktop.left,
+                desktop.top,
+                desktop.pixels.width() as i32,
+                desktop.pixels.height() as i32,
+            )
+        } else {
+            (
+                GetSystemMetrics(SM_XVIRTUALSCREEN),
+                GetSystemMetrics(SM_YVIRTUALSCREEN),
+                GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                GetSystemMetrics(SM_CYVIRTUALSCREEN),
+            )
+        };
+        anyhow::ensure!(
+            w > 0 && h > 0 && w as u64 * h as u64 * 4 <= 512 * 1024 * 1024,
+            "Desktop is too large to select safely"
         );
         let mut cursor = POINT::default();
         let _ = GetCursorPos(&mut cursor);
@@ -474,13 +510,23 @@ fn create_selection(kind: CaptureKind) -> Result<()> {
             s.borrow_mut().as_mut().unwrap().selection = Some(Selection {
                 kind,
                 desktop,
+                bounds: RECT {
+                    left,
+                    top,
+                    right: left + w,
+                    bottom: top + h,
+                },
                 paint,
                 anchor: None,
                 current,
             })
         });
         let hwnd = CreateWindowExW(
-            WS_EX_TOPMOST,
+            if matches!(kind, CaptureKind::Gif) {
+                WS_EX_TOPMOST | WS_EX_LAYERED
+            } else {
+                WS_EX_TOPMOST
+            },
             w!("SnipTory.Native"),
             w!("SnipTory — Select a region · Esc to cancel"),
             WS_POPUP,
@@ -494,6 +540,9 @@ fn create_selection(kind: CaptureKind) -> Result<()> {
             None,
         )?;
         STATE.with(|s| s.borrow_mut().as_mut().unwrap().overlay = hwnd);
+        if matches!(kind, CaptureKind::Gif) {
+            paint_selection(hwnd);
+        }
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = SetForegroundWindow(hwnd);
     }
@@ -761,17 +810,17 @@ fn end_selection(commit: bool) {
         }
         if matches!(selection.kind, CaptureKind::Gif) {
             let region = selection.anchor.and_then(|anchor| {
-                let w = selection.desktop.pixels.width() as i32;
-                let h = selection.desktop.pixels.height() as i32;
+                let w = selection.bounds.right - selection.bounds.left;
+                let h = selection.bounds.bottom - selection.bounds.top;
                 let left = anchor.x.min(selection.current.x).clamp(0, w);
                 let top = anchor.y.min(selection.current.y).clamp(0, h);
                 let right = anchor.x.max(selection.current.x).clamp(0, w);
                 let bottom = anchor.y.max(selection.current.y).clamp(0, h);
                 (right > left && bottom > top).then_some(RECT {
-                    left: left + selection.desktop.left,
-                    top: top + selection.desktop.top,
-                    right: right + selection.desktop.left,
-                    bottom: bottom + selection.desktop.top,
+                    left: left + selection.bounds.left,
+                    top: top + selection.bounds.top,
+                    right: right + selection.bounds.left,
+                    bottom: bottom + selection.bounds.top,
                 })
             });
             drop(selection);
@@ -784,7 +833,11 @@ fn end_selection(commit: bool) {
         }
         if commit {
             if let Some(anchor) = selection.anchor {
-                if let Some(pixels) = capture::crop(&selection.desktop, anchor, selection.current) {
+                if let Some(pixels) = selection
+                    .desktop
+                    .as_ref()
+                    .and_then(|desktop| capture::crop(desktop, anchor, selection.current))
+                {
                     let copied = clipboard::copy(owner, &pixels);
                     let _ = store.send(StoreCommand::Save(pixels));
                     if let Err(error) = copied {
@@ -1272,31 +1325,34 @@ unsafe fn paint_selection(hwnd: HWND) {
             let Some(selection) = state.as_ref().and_then(|s| s.selection.as_ref()) else {
                 return;
             };
-            let desktop = &selection.desktop;
             let dc = selection.paint.dc;
-            let w = desktop.pixels.width() as i32;
-            let h = desktop.pixels.height() as i32;
+            let w = selection.bounds.right - selection.bounds.left;
+            let h = selection.bounds.bottom - selection.bounds.top;
             let info = capture::bitmap_info(w, h);
             let accent = if matches!(selection.kind, CaptureKind::Gif) {
                 COLORREF(0x00786aef)
             } else {
                 COLORREF(0x00df9f6e)
             };
-            StretchDIBits(
-                dc,
-                0,
-                0,
-                w,
-                h,
-                0,
-                0,
-                w,
-                h,
-                Some(desktop.dimmed.as_ptr().cast()),
-                &info,
-                DIB_RGB_COLORS,
-                SRCCOPY,
-            );
+            if let Some(desktop) = selection.desktop.as_ref() {
+                StretchDIBits(
+                    dc,
+                    0,
+                    0,
+                    w,
+                    h,
+                    0,
+                    0,
+                    w,
+                    h,
+                    Some(desktop.dimmed.as_ptr().cast()),
+                    &info,
+                    DIB_RGB_COLORS,
+                    SRCCOPY,
+                );
+            } else {
+                std::ptr::write_bytes(selection.paint.bits, 0, w as usize * h as usize * 4);
+            }
             let mut label = if matches!(selection.kind, CaptureKind::Gif) {
                 "Drag to record a GIF   ·   Esc to cancel"
             } else {
@@ -1317,24 +1373,26 @@ unsafe fn paint_selection(hwnd: HWND) {
                     right: x + width,
                     bottom: y + height,
                 };
-                let _ = SaveDC(dc);
-                let _ = IntersectClipRect(dc, x, y, x + width, y + height);
-                StretchDIBits(
-                    dc,
-                    0,
-                    0,
-                    w,
-                    h,
-                    0,
-                    0,
-                    w,
-                    h,
-                    Some(desktop.bgra.as_ptr().cast()),
-                    &info,
-                    DIB_RGB_COLORS,
-                    SRCCOPY,
-                );
-                let _ = RestoreDC(dc, -1);
+                if let Some(desktop) = selection.desktop.as_ref() {
+                    let _ = SaveDC(dc);
+                    let _ = IntersectClipRect(dc, x, y, x + width, y + height);
+                    StretchDIBits(
+                        dc,
+                        0,
+                        0,
+                        w,
+                        h,
+                        0,
+                        0,
+                        w,
+                        h,
+                        Some(desktop.bgra.as_ptr().cast()),
+                        &info,
+                        DIB_RGB_COLORS,
+                        SRCCOPY,
+                    );
+                    let _ = RestoreDC(dc, -1);
+                }
                 let brush = CreateSolidBrush(accent);
                 FrameRect(dc, &region, brush);
                 let _ = DeleteObject(brush.into());
@@ -1406,9 +1464,91 @@ unsafe fn paint_selection(hwnd: HWND) {
             let _ = DeleteObject(font.into());
             // Present the completed frame once, rather than visibly dimming and
             // restoring the selected interior on every mouse movement.
-            let _ = BitBlt(output, 0, 0, w, h, Some(dc), 0, 0, SRCCOPY);
+            if selection.desktop.is_some() {
+                let _ = BitBlt(output, 0, 0, w, h, Some(dc), 0, 0, SRCCOPY);
+            } else {
+                let _ = GdiFlush();
+                let pixels = std::slice::from_raw_parts_mut(
+                    selection.paint.bits,
+                    w as usize * h as usize * 4,
+                );
+                let selected = selection.anchor.map(|anchor| RECT {
+                    left: anchor.x.min(selection.current.x),
+                    top: anchor.y.min(selection.current.y),
+                    right: anchor.x.max(selection.current.x),
+                    bottom: anchor.y.max(selection.current.y),
+                });
+                apply_live_alpha(pixels, w as usize, selected);
+                let destination = POINT {
+                    x: selection.bounds.left,
+                    y: selection.bounds.top,
+                };
+                let source = POINT::default();
+                let size = SIZE { cx: w, cy: h };
+                let blend = BLENDFUNCTION {
+                    BlendOp: AC_SRC_OVER as u8,
+                    BlendFlags: 0,
+                    SourceConstantAlpha: 255,
+                    AlphaFormat: AC_SRC_ALPHA as u8,
+                };
+                let _ = UpdateLayeredWindow(
+                    hwnd,
+                    None,
+                    Some(&destination),
+                    Some(&size),
+                    Some(dc),
+                    Some(&source),
+                    COLORREF(0),
+                    Some(&blend),
+                    ULW_ALPHA,
+                );
+            }
         });
         let _ = EndPaint(hwnd, &paint);
+    }
+}
+
+fn apply_live_alpha(pixels: &mut [u8], width: usize, selected: Option<RECT>) {
+    for (index, pixel) in pixels.chunks_exact_mut(4).enumerate() {
+        // Nonzero alpha keeps the otherwise clear interior hit-testable. It is
+        // visually transparent, while DWM continues composing live video below.
+        pixel[3] = if pixel[..3].iter().any(|value| *value != 0) {
+            255
+        } else {
+            let x = (index % width) as i32;
+            let y = (index / width) as i32;
+            if selected.is_some_and(|rect| {
+                x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+            }) {
+                1
+            } else {
+                32
+            }
+        };
+    }
+}
+
+#[cfg(test)]
+mod live_selection_tests {
+    use super::*;
+    #[test]
+    fn live_background_is_translucent_and_guides_are_opaque() {
+        let mut pixels = vec![0; 4 * 4];
+        pixels[0] = 100;
+        apply_live_alpha(
+            &mut pixels,
+            2,
+            Some(RECT {
+                left: 1,
+                top: 0,
+                right: 2,
+                bottom: 1,
+            }),
+        );
+        assert_eq!(pixels[3], 255);
+        assert_eq!(pixels[7], 1);
+        assert_eq!(pixels[11], 32);
+        assert_eq!(pixels[15], 32);
     }
 }
 

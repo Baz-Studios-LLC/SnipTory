@@ -4,6 +4,7 @@ mod capture;
 mod clipboard;
 mod history;
 mod native;
+mod preview;
 mod recording;
 mod settings;
 mod updates;
@@ -23,6 +24,8 @@ pub enum StoreCommand {
     Save(image::RgbaImage),
     SaveGif(recording::RecordedGif),
     Load(usize),
+    Delete(String),
+    ClearHistory,
     Paste(PathBuf),
     ApplyUpdate(velopack::UpdateManager, velopack::VelopackAsset),
     Settings(settings::Settings),
@@ -137,6 +140,25 @@ fn run() -> Result<()> {
                             status(&worker_ui, "GIF saved to History");
                             let _ = worker_store.send(StoreCommand::Load(60));
                         }
+                        StoreCommand::Delete(id) => {
+                            let result = history.delete(&id);
+                            let _ = worker_store.send(StoreCommand::Load(60));
+                            let _ =
+                                worker_ui.upgrade_in_event_loop(|ui| ui.set_history_busy(false));
+                            result?;
+                            status(&worker_ui, "Capture deleted");
+                        }
+                        StoreCommand::ClearHistory => {
+                            let result = history.clear();
+                            let _ = worker_store.send(StoreCommand::Load(60));
+                            let _ =
+                                worker_ui.upgrade_in_event_loop(|ui| ui.set_history_busy(false));
+                            let count = result?;
+                            status(
+                                &worker_ui,
+                                format!("History cleared · {count} capture(s) deleted"),
+                            );
+                        }
                         StoreCommand::Load(limit) => {
                             let mut loaded = Vec::new();
                             let mut previews = Vec::new();
@@ -250,6 +272,51 @@ fn run() -> Result<()> {
             }
         })?;
     ready_rx.recv()?.map_err(anyhow::Error::msg)?;
+    let previewer = preview::start(ui.as_weak())?;
+    let hover_entries = entries.clone();
+    let poster = Rc::new(RefCell::new(None::<(usize, String, slint::Image)>));
+    let w = ui.as_weak();
+    ui.on_preview(move |index| {
+        let Some(ui) = w.upgrade() else {
+            return;
+        };
+        ui.set_hovered(index);
+        let model = ui.get_captures();
+        let previous = poster.borrow_mut().take();
+        if let Some((old_index, id, image)) = previous {
+            if let Some(mut row) = model.row_data(old_index) {
+                if row.id.as_str() == id {
+                    row.preview = image;
+                    model.set_row_data(old_index, row);
+                }
+            }
+        }
+        if index >= 0 {
+            if let Some(entry) = hover_entries.borrow().get(index as usize) {
+                if entry.duration_ms.is_some() {
+                    if let Some(row) = model.row_data(index as usize) {
+                        *poster.borrow_mut() =
+                            Some((index as usize, entry.id.clone(), row.preview));
+                        let _ = previewer.send(preview::Request::Play {
+                            index,
+                            id: entry.id.clone(),
+                            path: entry.path.clone(),
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+        let _ = previewer.send(preview::Request::Stop);
+    });
+    let tx = store_tx.clone();
+    ui.on_delete_entry(move |id| {
+        let _ = tx.send(StoreCommand::Delete(id.to_string()));
+    });
+    let tx = store_tx.clone();
+    ui.on_clear_history(move || {
+        let _ = tx.send(StoreCommand::ClearHistory);
+    });
     let updater = updates::start(ui.as_weak(), bridge.clone(), preferences.clone())?;
     let check_sender = updater.clone();
     let w = ui.as_weak();
@@ -328,6 +395,7 @@ fn run() -> Result<()> {
                     })
                     .unwrap_or_else(|| "Capture".into());
                 model.push(CaptureItem {
+                    id: entry.id.clone().into(),
                     preview: slint::Image::from_rgba8(pixels),
                     label: date.into(),
                     dimensions: match entry.duration_ms {
@@ -345,6 +413,7 @@ fn run() -> Result<()> {
             }
             *entries_for_worker.borrow_mut() = loaded;
             if let Some(ui) = weak.upgrade() {
+                ui.invoke_preview(-1);
                 ui.set_captures(ModelRc::new(model));
                 ui.set_selected(-1);
                 ui.set_has_more(has_more);
@@ -358,6 +427,7 @@ fn run() -> Result<()> {
     let w = ui.as_weak();
     ui.on_dismiss(move || {
         if let Some(ui) = w.upgrade() {
+            ui.invoke_preview(-1);
             let _ = ui.hide();
         }
     });
@@ -404,6 +474,7 @@ fn run() -> Result<()> {
     let w = ui.as_weak();
     ui.window().on_close_requested(move || {
         if let Some(ui) = w.upgrade() {
+            ui.invoke_preview(-1);
             let _ = ui.hide();
         }
         slint::CloseRequestResponse::KeepWindowShown

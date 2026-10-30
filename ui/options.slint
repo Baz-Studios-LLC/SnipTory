@@ -27,6 +27,8 @@ export component OptionsPanel inherits Rectangle {
     callback open-folder();
     callback restart();
     callback update();
+    callback clear-history();
+    in property <bool> history-busy;
     in property <string> update-label;
     in property <bool> update-busy;
     in property <string> update-detail;
@@ -75,6 +77,11 @@ export component OptionsPanel inherits Rectangle {
             folder-touch := TouchArea { clicked => { root.open-folder(); } }
         }
         Rectangle { vertical-stretch: 1; background: transparent; }
+        Rectangle {
+            height: 30px; border-radius: 6px; border-width: 1px; border-color: #613b4a; background: clear-touch.has-hover ? #422633 : #2b202b;
+            Text {text: "Clear history…"; font-size: 11px; color: #e2a1b6; horizontal-alignment: center; vertical-alignment: center;}
+            clear-touch := TouchArea {enabled: !root.history-busy;clicked => {root.clear-history();}}
+        }
         actions := HorizontalLayout {
             height: 30px; spacing: 10px;
             Rectangle {

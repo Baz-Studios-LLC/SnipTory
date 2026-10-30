@@ -6,7 +6,7 @@
 
 ## Install and update
 
-Install **SnipTory-v006-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v007-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -50,7 +50,9 @@ Press **Alt+Shift+G**, select a region with the white reticle and red guide line
 
 Recording targets 12 FPS at the selected resolution, includes the cursor, and has no audio or duration limit. A capture worker and streaming encoder exchange at most one queued frame. Slow encoding drops intermediate samples while preserving elapsed timing. Raw frames are limited to 64 MiB; memory does not grow with recording length. Recording controls are excluded using Windows display affinity. The app refuses recording if it cannot set that exclusion.
 
-GIFs share History with screenshots, with a GIF badge and duration. Clipboard operations provide the original animated file through Windows CF_HDROP. Destinations that accept file attachments preserve animation; the app does not publish a flattened still-image fallback. Destination-specific GIF paste/attachment support varies. Finish the recording before restarting or updating; exiting finishes saving the active recording.
+GIFs share History with screenshots, with a GIF badge and duration. Hover over a GIF to play it; move away to restore its still preview. Playback decodes frames on a background worker without retaining the whole animation. Clipboard operations provide the original animated file through Windows CF_HDROP. Destinations that accept file attachments preserve animation; the app does not publish a flattened still-image fallback. Destination-specific GIF paste/attachment support varies. Finish the recording before restarting or updating; exiting finishes saving the active recording.
+
+Use the trash icon on a History card to delete its saved capture and thumbnail. **Clear history** is available in History and Options and removes all indexed screenshots, GIFs, and thumbnails, including older entries beyond the visible page. Both actions ask for confirmation. Settings and recordings still being encoded are preserved.
 
 ## Architecture
 
@@ -62,9 +64,10 @@ GIFs share History with screenshots, with a GIF badge and duration. Clipboard op
 - `src/settings.rs`: persisted preferences and this app's per-user startup entry.
 - `src/updates.rs`: installer-managed release checks, downloads, and restart coordination.
 - `src/recording.rs`: region capture, cursor composition, bounded frame queue, and streaming GIF encoding.
+- `src/preview.rs`: background GIF hover playback with bounded frame memory.
 - `ui/history.slint`, `ui/options.slint`, `ui/tray.slint`: gallery, integrated Options, and matching tray menu.
 
-The desktop is frozen **before** the selector is displayed. Selection crops that immutable image, so selector borders never appear in output. Slint runs on the main thread; native integration and storage each have a blocking worker. No idle polling timer is used. A temporary 30 ms timer waits for physical modifiers to be released before paste, with a two-second timeout.
+For screenshots, the desktop is frozen **before** the selector is displayed. Selection crops that immutable image, so selector borders never appear in output. GIF selection uses a translucent native overlay over the live desktop so motion remains visible while dragging. Slint runs on the main thread; native integration and storage each have a blocking worker. No idle polling timer is used. A temporary 30 ms timer waits for physical modifiers to be released before paste, with a two-second timeout.
 
 Per-monitor-v2 DPI awareness comes from the executable manifest. Selection uses virtual-desktop physical pixels, including negative monitor origins. Gallery placement is constrained to the cursor monitor's work area.
 
@@ -93,7 +96,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v006/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v007/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

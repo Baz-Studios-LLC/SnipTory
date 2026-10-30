@@ -4,6 +4,7 @@ export { TrayMenu } from "tray.slint";
 export { RecordingBar } from "recording.slint";
 
 export struct CaptureItem {
+    id: string,
     preview: image,
     label: string,
     dimensions: string,
@@ -51,6 +52,14 @@ export component HistoryWindow inherits Window {
     in property <string> status: "Ready";
     in property <bool> has-more;
     in-out property <int> selected: -1;
+    in-out property <int> hovered: -1;
+    in-out property <bool> history-busy;
+    in-out property <bool> confirming;
+    private property <bool> clear-requested;
+    private property <string> pending-delete-id;
+    callback preview(int);
+    callback delete-entry(string);
+    callback clear-history();
     callback capture();
     callback dismiss();
     callback paste(int);
@@ -59,7 +68,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v006";
+    in property <string> release-version: "v007";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -74,8 +83,10 @@ export component HistoryWindow inherits Window {
 
     focus := FocusScope {
         key-pressed(event) => {
-            if event.text == Key.Escape { root.dismiss(); return accept; }
-            if event.text == Key.Return { if root.selected >= 0 { root.paste(root.selected); } return accept; }
+            if event.text == Key.Escape { if root.confirming {root.confirming = false;} else {root.dismiss();} return accept; }
+            if root.confirming { if event.text == Key.Return {root.accept-deletion();} return accept; }
+            if event.text == Key.Delete && root.selected >= 0 && !root.history-busy { root.request-delete(root.selected); return accept; }
+            if event.text == Key.Return { if root.selected >= 0 && !root.history-busy { root.paste(root.selected); } return accept; }
             if event.text == Key.LeftArrow { root.navigate("left"); return accept; }
             if event.text == Key.RightArrow { root.navigate("right"); return accept; }
             if event.text == Key.UpArrow { root.navigate("up"); return accept; }
@@ -83,7 +94,19 @@ export component HistoryWindow inherits Window {
             return reject;
         }
     }
-    public function prepare() { focus.focus(); }
+    public function prepare() { root.confirming = false; focus.focus(); }
+    public function request-delete(index: int) {
+        if index >= 0 && index < root.captures.length && !root.history-busy {
+            root.pending-delete-id = root.captures[index].id; root.clear-requested = false; root.confirming = true; root.preview(-1); root.hovered = -1;
+        }
+    }
+    public function request-clear() {
+        if !root.history-busy {root.clear-requested = true; root.pending-delete-id = ""; root.confirming = true; root.preview(-1); root.hovered = -1;}
+    }
+    function accept-deletion() {
+        root.confirming = false; root.history-busy = true;
+        if root.clear-requested {root.clear-history();} else {root.delete-entry(root.pending-delete-id);}
+    }
 
     Rectangle {
         border-radius: 12px;
@@ -130,6 +153,8 @@ export component HistoryWindow inherits Window {
                 open-folder => { root.open-folder(); }
                 restart => { root.restart-app(); }
                 update => { root.update-action(); }
+                history-busy: root.history-busy;
+                clear-history => {root.request-clear();}
             }
             if !root.show-options : VerticalLayout {
                 spacing: 0px; padding: 0px;
@@ -153,6 +178,11 @@ export component HistoryWindow inherits Window {
                 Text { text: "RECENT CAPTURES"; font-size: 9px; letter-spacing: 1px; font-weight: 600; color: #929bad; }
                 Rectangle { horizontal-stretch: 1; }
                 Text { text: "\{root.captures.length} saved"; font-size: 10px; color: #697386; }
+                Rectangle {
+                    width: 78px; height: 24px; border-radius: 5px; background: clear-touch.has-hover ? #3b2631 : transparent;
+                    Text { text: "Clear history"; font-size: 10px; color: #c58b9c; horizontal-alignment: center; vertical-alignment: center; }
+                    clear-touch := TouchArea {enabled: root.captures.length > 0 && !root.history-busy; clicked => {root.request-clear();}}
+                }
             }
             if root.captures.length == 0 : Rectangle {
                 vertical-stretch: 1;
@@ -205,7 +235,23 @@ export component HistoryWindow inherits Window {
                                 Text { x: 8px; y: 110px; width: parent.width - 16px; height: 14px; text: root.captures[index].label; font-size: 10px; color: #d3d8e3; overflow: elide; }
                                 Text { x: 8px; y: 128px; width: parent.width - 16px; height: 12px; text: root.captures[index].dimensions; font-size: 9px; color: #7d8799; overflow: elide; }
                             }
-                            card-touch := TouchArea { enabled: parent.exists; clicked => { root.paste(parent.index); } }
+                            card-touch := TouchArea {
+                                enabled: parent.exists && !root.history-busy;
+                                clicked => { root.paste(parent.index); }
+                                changed has-hover => {
+                                    if self.has-hover && parent.exists && root.captures[parent.index].animated {
+                                        root.hovered = parent.index; root.preview(parent.index);
+                                    } else if !self.has-hover && root.hovered == parent.index {
+                                        root.hovered = -1; root.preview(-1);
+                                    }
+                                }
+                            }
+                            if self.exists : Rectangle {
+                                x: parent.width - 29px; y: 8px; width: 21px; height: 22px; border-radius: 5px; z: 1;
+                                background: delete-touch.has-hover ? #683646 : #29212be0;
+                                Image { x: 4px; y: 4px; width: 13px; height: 14px; source: @image-url("icons/trash.svg"); colorize: #f5cad6; }
+                                delete-touch := TouchArea {enabled: !root.history-busy;clicked => {root.request-delete(index);}}
+                            }
                         }
                     }
                     if root.has-more : Rectangle {
@@ -222,6 +268,29 @@ export component HistoryWindow inherits Window {
                 Rectangle { x: 22px; y: 17px; width: 5px; height: 5px; border-radius: 3px; background: #88c9a8; }
                 Text { x: 33px; y: 10px; width: parent.width - 105px; height: 19px; vertical-alignment: center; text: root.status; font-size: 10px; color: #8b96a9; overflow: elide; }
                 Text { x: parent.width - 57px; y: 10px; width: 35px; height: 19px; vertical-alignment: center; horizontal-alignment: right; text: root.release-version; color: #8294ae; font-size: 10px; }
+            }
+        }
+    }
+    if root.confirming : Rectangle {
+        z: 100; background: #080b11c9;
+        TouchArea {}
+        Rectangle {
+            x: 24px; y: (parent.height - self.height)/2; width: parent.width - 48px; height: 186px;
+            border-radius: 12px; border-width: 1px; border-color: #61404d; background: #1a1e28;
+            Text { x: 20px; y: 20px; height: 27px; text: root.clear-requested ? "Clear all history?" : "Delete this capture?"; color: #f4e7ed; font-size: 18px; font-weight: 600; }
+            Text { x: 20px; y: 57px; width: parent.width - 40px; height: 48px; wrap: word-wrap; text: root.clear-requested ? "All saved screenshots, GIFs, and previews will be deleted. This cannot be undone." : "The saved capture and its preview will be deleted. This cannot be undone."; color: #a59cac; font-size: 12px; }
+            HorizontalLayout {
+                x: 20px; y: 126px; width: parent.width - 40px; height: 35px; spacing: 10px;
+                Rectangle {
+                    min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; background: cancel-delete.has-hover ? #354055 : #283244;
+                    Text { text: "Cancel"; color: #ccd7e9; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                    cancel-delete := TouchArea {clicked => {root.confirming = false;}}
+                }
+                Rectangle {
+                    min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; background: confirm-delete.has-hover ? #a84e67 : #813b50;
+                    Text { text: root.clear-requested ? "Clear history" : "Delete"; color: #fff0f5; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                    confirm-delete := TouchArea {clicked => {root.accept-deletion();}}
+                }
             }
         }
     }

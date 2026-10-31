@@ -1,9 +1,10 @@
 # macOS and Bazzite preparation
 
-The production application is currently Windows-only. Shared code is extracted
-into a portable Rust library, with CI for Linux, Apple Silicon, and Intel Macs.
-This does **not** yet provide a runnable macOS/Linux desktop app or installer.
-The Windows release stays v013 while this groundwork is developed on main.
+The established application is Windows-based. Shared code is extracted into a
+portable Rust library, with CI for Linux, Apple Silicon, and Intel Macs. A first
+macOS frontend is now being compiled and packaged for v014; see
+[Mac setup and test scope](MACOS.md). Linux/Bazzite still has no runnable desktop
+frontend. Shared core CI does not establish desktop feature parity.
 
 ## What is ready to reuse
 

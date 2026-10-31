@@ -12,7 +12,8 @@ if [ "${1:-}" != '--skip-build' ]; then cargo build --release --locked; fi
 app="$stage/SnipTory.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$output" "$stage/AppIcon.iconset"
 cp target/release/sniptory "$app/Contents/MacOS/sniptory"
-cp LICENSE licenses/THIRD_PARTY_NOTICES.txt licenses/Slint-Royalty-Free.md "$app/Contents/Resources/"
+cp LICENSE licenses/Slint-Royalty-Free.md "$app/Contents/Resources/"
+python3 scripts/Generate-Notices.py "$app/Contents/Resources/THIRD_PARTY_NOTICES.txt"
 for size in 16 32 128 256 512; do
   sips -z "$size" "$size" assets/sniptory.png --out "$stage/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))

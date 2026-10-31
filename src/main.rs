@@ -6,6 +6,8 @@ mod macos;
 #[cfg(target_os = "macos")]
 use macos as native;
 #[cfg(target_os = "macos")]
+use sniptory::{settings, thumbnail};
+#[cfg(target_os = "macos")]
 mod preview;
 #[cfg(target_os = "macos")]
 mod updates;

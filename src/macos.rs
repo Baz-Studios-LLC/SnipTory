@@ -265,6 +265,95 @@ unsafe extern "C" {
 unsafe extern "C" {
     fn CFRelease(object: *const c_void);
 }
+#[link(name = "AppKit", kind = "framework")]
+unsafe extern "C" {
+    static NSAppearanceNameDarkAqua: *mut c_void;
+}
+
+fn native_window(ui: &HistoryWindow) -> Option<*mut c_void> {
+    let raw = ui.window().window_handle().window_handle().ok()?.as_raw();
+    if let RawWindowHandle::AppKit(handle) = raw {
+        let window = unsafe { object(handle.ns_view.as_ptr(), c"window") };
+        if !window.is_null() {
+            return Some(window);
+        }
+    }
+    None
+}
+
+fn configure_window_chrome(ui: &HistoryWindow) {
+    let Some(window) = native_window(ui) else {
+        return;
+    };
+    // Native title-bar controls retain AppKit's accessibility, hover states,
+    // minimize, and full-screen behavior. The Slint content stays below them.
+    unsafe {
+        let set_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, bool) =
+            std::mem::transmute(objc_msgSend as *const ());
+        set_bool(
+            window,
+            sel_registerName(c"setTitlebarAppearsTransparent:".as_ptr()),
+            true,
+        );
+        let set_integer: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
+            std::mem::transmute(objc_msgSend as *const ());
+        set_integer(window, sel_registerName(c"setTitleVisibility:".as_ptr()), 1);
+        let send_object: unsafe extern "C" fn(
+            *mut c_void,
+            *mut c_void,
+            *mut c_void,
+        ) -> *mut c_void = std::mem::transmute(objc_msgSend as *const ());
+        let appearance = send_object(
+            objc_getClass(c"NSAppearance".as_ptr()),
+            sel_registerName(c"appearanceNamed:".as_ptr()),
+            NSAppearanceNameDarkAqua,
+        );
+        let set_object: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+            std::mem::transmute(objc_msgSend as *const ());
+        if !appearance.is_null() {
+            set_object(
+                window,
+                sel_registerName(c"setAppearance:".as_ptr()),
+                appearance,
+            );
+        }
+        let color: unsafe extern "C" fn(
+            *mut c_void,
+            *mut c_void,
+            f64,
+            f64,
+            f64,
+            f64,
+        ) -> *mut c_void = std::mem::transmute(objc_msgSend as *const ());
+        let background = color(
+            objc_getClass(c"NSColor".as_ptr()),
+            sel_registerName(c"colorWithSRGBRed:green:blue:alpha:".as_ptr()),
+            17.0 / 255.0,
+            20.0 / 255.0,
+            25.0 / 255.0,
+            1.0,
+        );
+        set_object(
+            window,
+            sel_registerName(c"setBackgroundColor:".as_ptr()),
+            background,
+        );
+    }
+}
+
+fn restore_window(ui: &HistoryWindow) {
+    if let Some(window) = native_window(ui) {
+        unsafe {
+            let send: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+                std::mem::transmute(objc_msgSend as *const ());
+            send(
+                window,
+                sel_registerName(c"deminiaturize:".as_ptr()),
+                std::ptr::null_mut(),
+            );
+        }
+    }
+}
 unsafe fn object(receiver: *mut c_void, selector: &CStr) -> *mut c_void {
     unsafe {
         let send: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
@@ -510,6 +599,8 @@ impl App {
             ui.set_show_options(options);
             ui.invoke_prepare();
             ui.show()?;
+            configure_window_chrome(&ui);
+            restore_window(&ui);
             activate(std::process::id() as i32);
         }
         let weak = Rc::downgrade(self);
@@ -810,6 +901,7 @@ pub fn run() -> Result<()> {
     ui.set_release_version(crate::updates::RELEASE.trim().into());
     ui.set_ui_font_family(".AppleSystemUIFont".into());
     ui.set_native_title_drag(true);
+    ui.set_native_window_controls(true);
     ui.set_gif_recording_supported(false);
     ui.set_shortcut_help("Type a combination, e.g. Cmd+Shift+S.\nUse Control, Option or Command with a letter, number or F1–F24.".into());
     apply_preferences(&ui, &preferences.lock().unwrap());
@@ -928,6 +1020,7 @@ pub fn run() -> Result<()> {
     ready_rx.recv()?.map_err(anyhow::Error::msg)?;
     let initial_target = frontmost_pid();
     ui.show()?;
+    configure_window_chrome(&ui);
     accessory_app();
     let menu = Menu::new();
     let menu_history = MenuItem::with_id("history", "Open history", true, None);

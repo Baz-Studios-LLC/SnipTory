@@ -31,7 +31,8 @@ export component HistoryWindow inherits Window {
     preferred-height: 648px;
     min-width: 420px;
     min-height: 360px;
-    no-frame: true;
+    in property <bool> native-window-controls;
+    no-frame: !root.native-window-controls;
     always-on-top: true;
     icon: @image-url("../assets/sniptory.png");
     background: #111419;
@@ -62,7 +63,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v014";
+    in property <string> release-version: "v015";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -112,36 +113,36 @@ export component HistoryWindow inherits Window {
     }
 
     Rectangle {
-        border-radius: 12px;
+        border-radius: root.native-window-controls ? 0px : 12px;
         border-color: #353b47;
-        border-width: 1px;
+        border-width: root.native-window-controls ? 0px : 1px;
         background: #111419;
         VerticalLayout {
             padding: 0px;
             spacing: 0px;
             Rectangle {
-                height: 73px;
+                height: root.native-window-controls ? 60px : 73px;
                 if root.native-title-drag : TouchArea {
                     width: parent.width - 100px; height: parent.height;
                     pointer-event(event) => {if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {root.drag-window();}}
                 }
-                // Native WM_NCHITTEST limits dragging to this 73px title bar.
+                // On Windows, WM_NCHITTEST limits dragging to this title bar.
                 // No TouchArea overlays the gallery or its header buttons.
                     Rectangle {
-                        x: 22px; y: 20px;
+                        x: 22px; y: root.native-window-controls ? 14px : 20px;
                         width: 33px; height: 33px; border-radius: 10px;
                         background: #162f55;
                         Image { source: @image-url("icons/capture.svg"); width: 21px; height: 21px; x: 6px; y: 6px; colorize: #f1f6ff; }
                     }
-                    Text { x: 66px; y: 16px; height: 25px; text: "SnipTory"; font-size: 18px; font-weight: 700; color: #f2f3f8; }
-                    Text { x: 66px; y: 43px; height: 13px; text: "CAPTURE. RECALL. PASTE."; font-size: 9px; letter-spacing: 1.1px; color: #777f90; }
+                    Text { x: 66px; y: root.native-window-controls ? 10px : 16px; height: 25px; text: "SnipTory"; font-size: 18px; font-weight: 700; color: #f2f3f8; }
+                    Text { x: 66px; y: root.native-window-controls ? 37px : 43px; height: 13px; text: "CAPTURE. RECALL. PASTE."; font-size: 9px; letter-spacing: 1.1px; color: #777f90; }
                     HeaderButton {
-                        x: parent.width - 78px; y: 22px;
+                        x: parent.width - (root.native-window-controls ? 44px : 78px); y: root.native-window-controls ? 17px : 22px;
                         glyph: @image-url("icons/gear.svg");
                         active: root.show-options;
                         clicked => { root.show-options = !root.show-options; }
                     }
-                    HeaderButton {
+                    if !root.native-window-controls : HeaderButton {
                         x: parent.width - 44px; y: 22px;
                         glyph: @image-url("icons/close.svg");
                         clicked => { root.dismiss(); }

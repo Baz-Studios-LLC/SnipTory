@@ -229,7 +229,7 @@ fn run() -> Result<()> {
                                     let message = format!("Couldn't apply update: {error}");
                                     let _ = worker_ui.upgrade_in_event_loop(move |ui| {
                                         ui.set_update_busy(false);
-                                        ui.set_update_label("Retry restart".into());
+                                        ui.set_update_label("Retry update".into());
                                         ui.set_update_detail(message.into());
                                     });
                                 }

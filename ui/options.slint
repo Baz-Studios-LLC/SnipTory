@@ -55,7 +55,7 @@ export component OptionsPanel inherits Rectangle {
                 spacing: 0px; padding: 0px;
                 Preference { title: "Launch at sign-in"; detail: "Ready in the tray when Windows starts"; checked <=> root.launch-at-sign-in; toggled(value) => { root.changed-setting("startup",value); } }
                 Rectangle { height: 1px; background: #2b3340; }
-                Preference { title: "Automatic update checks"; detail: "Check quietly; choose when to restart"; checked <=> root.automatic-updates; toggled(value) => { root.changed-setting("updates",value); } }
+                Preference { title: "Automatic update checks"; detail: "Check quietly; choose when to update"; checked <=> root.automatic-updates; toggled(value) => { root.changed-setting("updates",value); } }
                 Rectangle { height: 1px; background: #2b3340; }
                 Preference { title: "Paste when choosing a capture"; detail: "Turn off to copy without sending Ctrl+V"; checked <=> root.paste-on-select; toggled(value) => { root.changed-setting("paste",value); } }
             }

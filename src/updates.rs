@@ -9,8 +9,8 @@ const FEED: &str = "https://github.com/Baz-Studios-LLC/SnipTory/releases/latest/
 
 enum Stage {
     Check,
-    Download(Box<UpdateInfo>),
-    Restart(VelopackAsset),
+    Update(Box<UpdateInfo>),
+    RetryApply(VelopackAsset),
 }
 
 pub fn start(
@@ -71,11 +71,13 @@ pub fn start(
                                 let version = release_label(&info.TargetFullRelease.Version);
                                 view(
                                     &ui,
-                                    &format!("Download {version}"),
-                                    &format!("{version} is available"),
+                                    &format!("Update to {version}"),
+                                    &format!(
+                                        "{version} is available. Updating will restart SnipTory."
+                                    ),
                                     false,
                                 );
-                                stage = Stage::Download(info);
+                                stage = Stage::Update(info);
                             }
                             Ok(_) => view(&ui, "Check for updates", "You're up to date", false),
                             Err(_) => view(
@@ -86,7 +88,7 @@ pub fn start(
                             ),
                         }
                     }
-                    Stage::Download(info) => {
+                    Stage::Update(info) => {
                         view(&ui, "Downloading…", "Downloading update…", true);
                         let (progress_tx, progress_rx) = mpsc::channel();
                         let progress_ui = ui.clone();
@@ -105,13 +107,10 @@ pub fn start(
                         match result {
                             Ok(()) => {
                                 let asset = info.TargetFullRelease.clone();
-                                view(
-                                    &ui,
-                                    "Restart & update",
-                                    "Update ready. Restart when you're ready.",
-                                    false,
-                                );
-                                stage = Stage::Restart(asset);
+                                // This click authorizes the whole update. Keep
+                                // the verified asset only for an apply retry.
+                                apply(&ui, &bridge, manager, &asset);
+                                stage = Stage::RetryApply(asset);
                             }
                             Err(_) => {
                                 // The latest release may have changed since the
@@ -126,14 +125,28 @@ pub fn start(
                             }
                         }
                     }
-                    Stage::Restart(asset) => {
-                        view(&ui, "Restarting…", "Finishing saves before updating…", true);
-                        bridge.send(native::Command::ApplyUpdate(manager.clone(), asset.clone()));
+                    Stage::RetryApply(asset) => {
+                        apply(&ui, &bridge, manager, asset);
                     }
                 }
             }
         })?;
     Ok(tx)
+}
+
+fn apply(
+    ui: &slint::Weak<HistoryWindow>,
+    bridge: &native::Bridge,
+    manager: &UpdateManager,
+    asset: &VelopackAsset,
+) {
+    view(
+        ui,
+        "Updating…",
+        "Finishing saves before restarting to update…",
+        true,
+    );
+    bridge.send(native::Command::ApplyUpdate(manager.clone(), asset.clone()));
 }
 
 fn view(ui: &slint::Weak<HistoryWindow>, label: &str, detail: &str, busy: bool) {

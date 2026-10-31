@@ -1001,7 +1001,8 @@ unsafe extern "system" fn procedure(
                                     if let Some(s) = s.borrow().as_ref() {
                                         let _ = s.ui.upgrade_in_event_loop(|ui| {
                                             ui.set_update_busy(false);
-                                            ui.set_update_label("Restart & update".into());
+                                            ui.set_update_label("Update".into());
+                                            ui.set_update_detail("Stop the GIF recording, then click Update to continue.".into());
                                         });
                                     }
                                 });

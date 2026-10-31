@@ -6,11 +6,11 @@
 
 ## Install and update
 
-Install **SnipTory-v010-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v011-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
-Installed builds check the public GitHub release feed after launch and every six hours when automatic checks are enabled. Checking and downloading run in a background worker. When an update is available, choose **Download**, then **Restart & update**. Queued saves finish first, and Velopack replaces the app and relaunches silently without another installation wizard. Checks can be disabled; manual checks remain available. No GitHub login or embedded credential is needed. Uninstalled development executables explain that installation is required for updates.
+Installed builds check the public GitHub release feed after launch and every six hours when automatic checks are enabled. Checking and downloading run in a background worker. When an update is available, choose **Update** to download it and restart automatically in one flow. Queued saves finish first, and Velopack replaces the app and relaunches silently without another installation wizard. Automatic checks only offer updates; they never download or restart without your click. Checks can be disabled; manual checks remain available. No GitHub login or embedded credential is needed. Uninstalled development executables explain that installation is required for updates.
 
 Release names, tags, in-app labels, and download filenames use **v001, v002, v003**, with no decimals. `VERSION` is the source of the public release number. Cargo and installer package metadata use the numeric format required by those tools; it is not displayed as the app's release label.
 
@@ -96,7 +96,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v010/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v011/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

@@ -18,7 +18,28 @@ component Preference inherits Rectangle {
     }
 }
 
+component ShortcutRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> busy;
+    in-out property <string> value <=> input.text;
+    height: 34px;
+    background: transparent;
+    Text {x: 0px; height: parent.height; vertical-alignment: center; text: root.label; color: #aeb9cb; font-size: 11px;}
+    Rectangle {
+        x: parent.width - 166px; width: 166px; height: 34px; border-radius: 6px;
+        border-width: 1px; border-color: input.has-focus ? #6e9fdf : #354050; background: #111923;
+        input := TextInput {x: 10px; y: 8px; width: parent.width - 20px; height: 18px; single-line: true; enabled: !root.busy; font-size: 11px; color: #c1d7f2; selection-background-color: #315c92; selection-foreground-color: #ffffff;}
+    }
+}
+
 export component OptionsPanel inherits Rectangle {
+    in property <string> screenshot-hotkey;
+    in property <string> history-hotkey;
+    in property <string> full-hotkey;
+    in property <string> gif-hotkey;
+    in property <bool> shortcuts-busy;
+    in property <string> shortcut-detail;
+    callback configure-shortcuts(string,string,string,string);
     in-out property <bool> launch-at-sign-in;
     in-out property <bool> automatic-updates;
     in-out property <bool> paste-on-select;
@@ -61,16 +82,31 @@ export component OptionsPanel inherits Rectangle {
             }
         }
         Rectangle {
-            height: 144px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
-            Text { x: 15px; y: 13px; text: "Screenshot"; color: #aeb9cb; font-size: 11px; }
-            Text { x: parent.width - 113px; y: 13px; text: "Alt + Shift + S"; color: #9fbee6; font-size: 11px; }
-            Text { x: 15px; y: 47px; text: "History"; color: #aeb9cb; font-size: 11px; }
-            Text { x: parent.width - 113px; y: 47px; text: "Alt + Shift + V"; color: #9fbee6; font-size: 11px; }
-            Text { x: 15px; y: 79px; text: "Full screenshot"; color: #aeb9cb; font-size: 11px; }
-            Text { x: parent.width - 113px; y: 79px; text: "Alt + Shift + F"; color: #9fbee6; font-size: 11px; }
-            Text { x: 15px; y: 111px; text: "Record GIF"; color: #aeb9cb; font-size: 11px; }
-            Text { x: parent.width - 113px; y: 111px; text: "Alt + Shift + G"; color: #9fbee6; font-size: 11px; }
+            height: 288px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            VerticalLayout {
+                padding: 14px; spacing: 8px;
+                Text {height: 18px; text: "Keyboard shortcuts"; color: #e0e5ef; font-size: 12px; font-weight: 600;}
+                screenshot := ShortcutRow {label: "Screenshot"; value: root.screenshot-hotkey; busy: root.shortcuts-busy;}
+                history := ShortcutRow {label: "History"; value: root.history-hotkey; busy: root.shortcuts-busy;}
+                full := ShortcutRow {label: "Full screenshot"; value: root.full-hotkey; busy: root.shortcuts-busy;}
+                gif := ShortcutRow {label: "Record GIF"; value: root.gif-hotkey; busy: root.shortcuts-busy;}
+                Text {height: 28px; text: "Type a combination, e.g. Ctrl+Shift+S.\nUse Ctrl, Alt or Win with a letter, number or F1–F24."; color: #8591a6; font-size: 10px;}
+                HorizontalLayout {
+                    height: 30px; spacing: 8px;
+                    Rectangle {
+                        min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; background: reset.has-hover ? #2c394c : #222d3d;
+                        Text {text: "Restore defaults"; color: #b6c5da; font-size: 11px; horizontal-alignment: center; vertical-alignment: center;}
+                        reset := TouchArea {enabled: !root.shortcuts-busy;clicked => {screenshot.value = "Alt+Shift+S";history.value = "Alt+Shift+V";full.value = "Alt+Shift+F";gif.value = "Alt+Shift+G";}}
+                    }
+                    Rectangle {
+                        min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; border-width: 1px; border-color: #335782; background: apply.has-hover ? #234774 : #162f55;
+                        Text {text: root.shortcuts-busy ? "Saving…" : "Apply shortcuts"; color: #d6e7ff; font-size: 11px; horizontal-alignment: center; vertical-alignment: center;}
+                        apply := TouchArea {enabled: !root.shortcuts-busy;clicked => {root.configure-shortcuts(screenshot.value,history.value,full.value,gif.value);}}
+                    }
+                }
+            }
         }
+        if root.shortcut-detail != "" : Text {text: root.shortcut-detail; color: #aabbd2; font-size: 10px; wrap: word-wrap;}
         Rectangle {
             height: 28px; border-radius: 5px; background: folder-touch.has-hover ? #25344a : #1b2737;
             Text { text: "Open captures folder ↗"; color: #adc8ed; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }

@@ -3,6 +3,7 @@
 mod capture;
 mod clipboard;
 mod history;
+mod hotkeys;
 mod native;
 mod preview;
 mod recording;
@@ -235,15 +236,32 @@ fn run() -> Result<()> {
                         }
                         StoreCommand::Settings(new_settings) => {
                             let old = settings::load(&root);
-                            let saved = settings::startup(new_settings.launch_at_sign_in)
+                            let saved = worker_bridge
+                                .configure_shortcuts(&new_settings.shortcuts)
+                                .and_then(|_| settings::startup(new_settings.launch_at_sign_in))
                                 .and_then(|_| settings::save(&root, &new_settings));
                             if let Err(error) = saved {
+                                let restored = worker_bridge.configure_shortcuts(&old.shortcuts);
                                 let _ = settings::startup(old.launch_at_sign_in);
                                 *storage_preferences.lock().unwrap() = old.clone();
-                                let _ = worker_ui
-                                    .upgrade_in_event_loop(move |ui| apply_preferences(&ui, &old));
+                                let detail = match restored {
+                                    Ok(()) => format!("{error:#}"),
+                                    Err(restore) => format!(
+                                        "{error:#}. Could not restore shortcuts: {restore:#}"
+                                    ),
+                                };
+                                let _ = worker_ui.upgrade_in_event_loop(move |ui| {
+                                    apply_preferences(&ui, &old);
+                                    ui.set_shortcuts_busy(false);
+                                    ui.set_shortcut_detail(detail.into());
+                                });
                                 return Err(error);
                             }
+                            let _ = worker_ui.upgrade_in_event_loop(move |ui| {
+                                apply_preferences(&ui, &new_settings);
+                                ui.set_shortcuts_busy(false);
+                                ui.set_shortcut_detail("Shortcuts saved".into());
+                            });
                             status(&worker_ui, "Preferences saved");
                         }
                         StoreCommand::Restart => {
@@ -330,6 +348,8 @@ fn run() -> Result<()> {
             let _ = updater.try_send(false);
         }
     });
+    let shortcut_preferences = preferences.clone();
+    let menu_preferences = preferences.clone();
     let tx = store_tx.clone();
     ui.on_setting_changed(move |key, value| {
         let mut settings = preferences.lock().unwrap();
@@ -340,6 +360,40 @@ fn run() -> Result<()> {
             _ => return,
         };
         let _ = tx.send(StoreCommand::Settings(settings.clone()));
+    });
+    let tx = store_tx.clone();
+    let w = ui.as_weak();
+    ui.on_configure_shortcuts(move |screenshot, history, full, gif| {
+        let shortcuts = hotkeys::Shortcuts {
+            screenshot: screenshot.into(),
+            history: history.into(),
+            full: full.into(),
+            gif: gif.into(),
+        };
+        match shortcuts.normalized() {
+            Ok(shortcuts) => {
+                let mut settings = shortcut_preferences.lock().unwrap();
+                settings.shortcuts = shortcuts;
+                let _ = tx.send(StoreCommand::Settings(settings.clone()));
+            }
+            Err(error) => {
+                if let Some(ui) = w.upgrade() {
+                    ui.set_shortcuts_busy(false);
+                    ui.set_shortcut_detail(error.to_string().into());
+                }
+            }
+        }
+    });
+    let view_entries = entries.clone();
+    let b = bridge.clone();
+    let w = ui.as_weak();
+    ui.on_view_capture(move |index| {
+        if let Some(entry) = view_entries.borrow().get(index as usize) {
+            if let Some(ui) = w.upgrade() {
+                ui.invoke_preview(-1);
+            }
+            b.send(native::Command::ViewCapture(entry.path.clone()));
+        }
     });
     ui.on_open_folder(move || {
         native::open_folder(&storage_root.join("captures"));
@@ -353,6 +407,11 @@ fn run() -> Result<()> {
     let menu_weak = menu.as_weak();
     ui.on_tray_menu(move || {
         if let Some(menu) = menu_weak.upgrade() {
+            let settings = menu_preferences.lock().unwrap();
+            menu.set_screenshot_hotkey(settings.shortcuts.screenshot.clone().into());
+            menu.set_history_hotkey(settings.shortcuts.history.clone().into());
+            menu.set_full_hotkey(settings.shortcuts.full.clone().into());
+            menu.set_gif_hotkey(settings.shortcuts.gif.clone().into());
             native::show_tray_menu(&menu);
         }
     });
@@ -491,6 +550,10 @@ fn apply_preferences(ui: &HistoryWindow, settings: &settings::Settings) {
     ui.set_launch_at_sign_in(settings.launch_at_sign_in);
     ui.set_automatic_updates(settings.automatic_updates);
     ui.set_paste_on_select(settings.paste_on_select);
+    ui.set_screenshot_hotkey(settings.shortcuts.screenshot.clone().into());
+    ui.set_history_hotkey(settings.shortcuts.history.clone().into());
+    ui.set_full_hotkey(settings.shortcuts.full.clone().into());
+    ui.set_gif_hotkey(settings.shortcuts.gif.clone().into());
 }
 
 pub fn hwnd(ui: &HistoryWindow) -> Option<isize> {

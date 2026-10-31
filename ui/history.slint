@@ -11,17 +11,6 @@ export struct CaptureItem {
     animated: bool,
 }
 
-component Keycap inherits Rectangle {
-    in property <string> label;
-    height: 22px;
-    width: keytext.preferred-width + 12px;
-    border-radius: 5px;
-    background: #22262e;
-    border-width: 1px;
-    border-color: #353a44;
-    keytext := Text { text: root.label; font-size: 10px; color: #a8afbd; horizontal-alignment: center; vertical-alignment: center; }
-}
-
 component HeaderButton inherits TouchArea {
     in property <image> glyph;
     in property <bool> active;
@@ -68,7 +57,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v012";
+    in property <string> release-version: "v013";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -77,6 +66,14 @@ export component HistoryWindow inherits Window {
     in-out property <bool> automatic-updates: true;
     in-out property <bool> paste-on-select: true;
     callback setting-changed(string, bool);
+    callback view-capture(int);
+    callback configure-shortcuts(string,string,string,string);
+    in-out property <string> screenshot-hotkey: "Alt+Shift+S";
+    in-out property <string> history-hotkey: "Alt+Shift+V";
+    in-out property <string> full-hotkey: "Alt+Shift+F";
+    in-out property <string> gif-hotkey: "Alt+Shift+G";
+    in-out property <bool> shortcuts-busy;
+    in-out property <string> shortcut-detail;
     callback open-folder();
     callback tray-menu();
     callback restart-app();
@@ -85,6 +82,7 @@ export component HistoryWindow inherits Window {
         key-pressed(event) => {
             if event.text == Key.Escape { if root.confirming {root.confirming = false;} else {root.dismiss();} return accept; }
             if root.confirming { if event.text == Key.Return {root.accept-deletion();} return accept; }
+            if root.show-options {return reject;}
             if event.text == Key.Delete && root.selected >= 0 && !root.history-busy { root.request-delete(root.selected); return accept; }
             if event.text == Key.Return { if root.selected >= 0 && !root.history-busy { root.paste(root.selected); } return accept; }
             if event.text == Key.LeftArrow { root.navigate("left"); return accept; }
@@ -145,6 +143,13 @@ export component HistoryWindow inherits Window {
                 launch-at-sign-in <=> root.launch-at-sign-in;
                 automatic-updates <=> root.automatic-updates;
                 paste-on-select <=> root.paste-on-select;
+                screenshot-hotkey: root.screenshot-hotkey;
+                history-hotkey: root.history-hotkey;
+                full-hotkey: root.full-hotkey;
+                gif-hotkey: root.gif-hotkey;
+                shortcuts-busy: root.shortcuts-busy;
+                shortcut-detail: root.shortcut-detail;
+                configure-shortcuts(s,h,f,g) => {root.shortcuts-busy = true;root.shortcut-detail = "Saving shortcuts…";root.configure-shortcuts(s,h,f,g);}
                 update-label: root.update-label;
                 update-busy: root.update-busy;
                 update-detail: root.update-detail;
@@ -192,7 +197,7 @@ export component HistoryWindow inherits Window {
                     }
                     Text { x: 20px; width: parent.width - 40px; y: parent.height / 2 - 20px; height: 24px; text: "Keep something worth keeping."; horizontal-alignment: center; font-size: 16px; font-weight: 600; color: #e5e8f0; }
                     Text { x: 20px; width: parent.width - 40px; y: parent.height / 2 + 16px; height: 38px; text: "Capture a detail, an idea, a little inspiration.\nFind it here whenever you need it."; horizontal-alignment: center; font-size: 12px; color: #818b9e; }
-                    HorizontalLayout { y: parent.height / 2 + 72px; height: 22px; width: parent.width; alignment: center; spacing: 5px; Keycap { label: "Alt"; } Keycap { label: "Shift"; } Keycap { label: "S"; } }
+                    Text { y: parent.height / 2 + 72px; height: 22px; width: parent.width; horizontal-alignment: center; text: root.screenshot-hotkey; color: #9fbee6; font-size: 11px; }
             }
             if root.captures.length > 0 : ScrollView {
                 content-width: self.width;
@@ -254,11 +259,21 @@ export component HistoryWindow inherits Window {
                                 }
                             }
                             if self.exists : Rectangle {
-                                x: parent.width - 29px; y: 8px; width: 21px; height: 22px; border-radius: 5px; z: 1;
-                                opacity: card-touch.has-hover || delete-touch.has-hover ? 1 : 0;
+                                x: parent.width - 54px; y: 8px; width: 46px; height: 22px; z: 1;
+                                background: transparent;
+                                opacity: card-touch.has-hover || view-touch.has-hover || delete-touch.has-hover ? 1 : 0;
+                                Rectangle {
+                                    x: 0px; width: 21px; height: 22px; border-radius: 5px;
+                                    background: view-touch.has-hover ? #294e7e : #182b43e0;
+                                    Image {x: 4px; y: 4px; width: 13px; height: 14px; source: @image-url("icons/view.svg"); colorize: #c4ddff;}
+                                    view-touch := TouchArea {enabled: !root.history-busy;mouse-cursor: pointer;clicked => {root.view-capture(index);}}
+                                }
+                                Rectangle {
+                                x: 25px; width: 21px; height: 22px; border-radius: 5px;
                                 background: delete-touch.has-hover ? #683646 : #29212be0;
                                 Image { x: 4px; y: 4px; width: 13px; height: 14px; source: @image-url("icons/trash.svg"); colorize: #f5cad6; }
-                                delete-touch := TouchArea {enabled: !root.history-busy;clicked => {root.request-delete(index);}}
+                                delete-touch := TouchArea {enabled: !root.history-busy;mouse-cursor: pointer;clicked => {root.request-delete(index);}}
+                                }
                             }
                         }
                     }

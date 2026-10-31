@@ -6,9 +6,11 @@
 
 ## Install and update
 
-Install **SnipTory-v012-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v013-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
+
+Options also lets you edit all four global shortcuts. Type a combination such as `Ctrl+Shift+S`, then choose **Apply shortcuts**. Use Ctrl, Alt, or Win, optionally Shift, with a letter, number, or F1–F24. Invalid, duplicate, or unavailable combinations are rejected; previous bindings are restored on a failed change. **Restore defaults** fills the original Alt+Shift+S/V/F/G bindings; Apply saves them. Shortcuts persist across restarts and updates, and the tray menu shows the saved bindings.
 
 Installed builds check the public GitHub release feed after launch and every six hours when automatic checks are enabled. Checking and downloading run in a background worker. When an update is available, choose **Update** to download it and restart automatically in one flow. Queued saves finish first, and Velopack replaces the app and relaunches silently without another installation wizard. Automatic checks only offer updates; they never download or restart without your click. Checks can be disabled; manual checks remain available. No GitHub login or embedded credential is needed. Uninstalled development executables explain that installation is required for updates.
 
@@ -54,6 +56,8 @@ GIFs share History with screenshots, with a GIF badge and duration. Hover over a
 
 Use the trash icon on a History card to delete its saved capture and thumbnail. **Clear history** is available in History and Options and removes all indexed screenshots, GIFs, and thumbnails, including older entries beyond the visible page. Both actions ask for confirmation. Settings and recordings still being encoded are preserved.
 
+Hover over a card to reveal the view and trash buttons. The eye icon opens the original PNG or GIF in your default image viewer for viewing and zooming. Clicking the card itself retains the copy/paste behavior.
+
 ## Architecture
 
 - `src/main.rs`: Slint gallery, callbacks, background storage worker.
@@ -97,7 +101,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v012/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v013/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

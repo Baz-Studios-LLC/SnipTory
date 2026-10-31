@@ -29,6 +29,11 @@ use windows::{
 const WAKE: u32 = WM_APP + 1;
 const TRAY: u32 = WM_APP + 2;
 pub enum Command {
+    ViewCapture(std::path::PathBuf),
+    ConfigureShortcuts(
+        crate::hotkeys::Shortcuts,
+        mpsc::Sender<std::result::Result<(), String>>,
+    ),
     Capture,
     FullCapture,
     RecordGif,
@@ -54,6 +59,11 @@ pub struct Bridge {
     hwnd: Arc<AtomicIsize>,
 }
 impl Bridge {
+    pub fn configure_shortcuts(&self, shortcuts: &crate::hotkeys::Shortcuts) -> Result<()> {
+        let (tx, rx) = mpsc::channel();
+        self.send(Command::ConfigureShortcuts(shortcuts.clone(), tx));
+        rx.recv()?.map_err(anyhow::Error::msg)
+    }
     pub fn send(&self, command: Command) {
         if self.tx.send(command).is_ok() {
             // SAFETY: handle is published after creation; posting never dereferences it.
@@ -200,6 +210,7 @@ struct State {
     taskbar_created: u32,
     restarting: bool,
     preferences: crate::settings::Shared,
+    shortcuts: crate::hotkeys::Shortcuts,
     recording_bar: slint::Weak<crate::RecordingBar>,
     recording: Option<RecordingSession>,
     recording_pending: bool,
@@ -235,15 +246,16 @@ pub fn start(
                     0,0,0,0,None,None,Some(instance.into()),None)?;
                 let icon = make_icon()?;
                 let taskbar_created = RegisterWindowMessageW(w!("TaskbarCreated"));
+                let shortcuts = preferences.lock().unwrap().shortcuts.clone();
                 STATE.with(|s| *s.borrow_mut() = Some(State { owner, overlay: HWND::default(), icon, ui, store, commands: rx,
-                    selection: None, capture_request: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences, recording_bar, recording:None, recording_pending:false, quit_after_recording:false, bridge:thread_bridge }));
+                    selection: None, capture_request: None, target: GetForegroundWindow(), pending_paste: None, foreground_hook: HWINEVENTHOOK::default(), taskbar_created, restarting: false, preferences, shortcuts:shortcuts.clone(), recording_bar, recording:None, recording_pending:false, quit_after_recording:false, bridge:thread_bridge }));
                 let hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND,None,Some(foreground_changed),0,0,WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
                 STATE.with(|s| s.borrow_mut().as_mut().unwrap().foreground_hook = hook);
                 if hook.is_invalid() { notify("Live focus tracking is unavailable. Focus your destination before opening History."); }
                 add_tray(owner, icon)?;
-                for (id,key,modifiers,label) in [(1,0x53,MOD_ALT | MOD_SHIFT,"Alt+Shift+S"),(2,0x56,MOD_ALT | MOD_SHIFT,"Alt+Shift+V"),(3,0x46,MOD_ALT | MOD_SHIFT,"Alt+Shift+F"),(4,0x47,MOD_ALT | MOD_SHIFT,"Alt+Shift+G")] {
-                    if RegisterHotKey(Some(owner), id, modifiers | MOD_NOREPEAT, key).is_err() {
-                        notify(&format!("{label} is already in use. Capture and history remain available from the tray."));
+                for (index,binding) in shortcuts.bindings()?.iter().enumerate() {
+                    if RegisterHotKey(Some(owner), index as i32 + 1, HOT_KEY_MODIFIERS(binding.modifiers) | MOD_NOREPEAT, binding.key).is_err() {
+                        notify(&format!("{} is already in use. Capture and history remain available from the tray.",binding.label));
                     }
                 }
                 Ok(owner)
@@ -989,6 +1001,15 @@ unsafe extern "system" fn procedure(
                         Some(Command::StopRecording) => stop_recording(false),
                         Some(Command::CancelRecording) => stop_recording(true),
                         Some(Command::RecordingFinished(result)) => finish_recording(result),
+                        Some(Command::ViewCapture(path)) => {
+                            if let Err(error) = view_capture(&path) {
+                                notify(&format!("{error:#}"));
+                            }
+                        }
+                        Some(Command::ConfigureShortcuts(shortcuts, reply)) => {
+                            let _ = reply
+                                .send(configure_shortcuts(shortcuts).map_err(|e| format!("{e:#}")));
+                        }
                         Some(Command::CopyGif(path, paste)) => copy_gif(path, paste),
                         Some(Command::Exit) => request_exit(),
                         Some(Command::History) => show_history(),
@@ -1224,6 +1245,83 @@ pub fn wait_for_restart() -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn configure_shortcuts(shortcuts: crate::hotkeys::Shortcuts) -> Result<()> {
+    let bindings = shortcuts.bindings()?;
+    let (owner, old) = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().unwrap();
+        (state.owner, state.shortcuts.clone())
+    });
+    if shortcuts == old {
+        return Ok(());
+    }
+    unsafe {
+        for id in 1..=4 {
+            let _ = UnregisterHotKey(Some(owner), id);
+        }
+        for (index, binding) in bindings.iter().enumerate() {
+            if RegisterHotKey(
+                Some(owner),
+                index as i32 + 1,
+                HOT_KEY_MODIFIERS(binding.modifiers) | MOD_NOREPEAT,
+                binding.key,
+            )
+            .is_err()
+            {
+                for id in 1..=4 {
+                    let _ = UnregisterHotKey(Some(owner), id);
+                }
+                let mut restored = true;
+                for (index, binding) in old.bindings()?.iter().enumerate() {
+                    restored &= RegisterHotKey(
+                        Some(owner),
+                        index as i32 + 1,
+                        HOT_KEY_MODIFIERS(binding.modifiers) | MOD_NOREPEAT,
+                        binding.key,
+                    )
+                    .is_ok();
+                }
+                if !restored {
+                    bail!(
+                        "{} is unavailable. Some previous shortcuts could not be restored; choose another combination or use the tray menu.",
+                        binding.label
+                    );
+                }
+                bail!(
+                    "{} is already in use. Your previous shortcuts are unchanged.",
+                    binding.label
+                );
+            }
+        }
+    }
+    STATE.with(|s| s.borrow_mut().as_mut().unwrap().shortcuts = shortcuts);
+    Ok(())
+}
+
+fn view_capture(path: &std::path::Path) -> Result<()> {
+    anyhow::ensure!(path.is_file(), "This capture is no longer available");
+    anyhow::ensure!(
+        path.extension()
+            .is_some_and(|s| s.eq_ignore_ascii_case("png") || s.eq_ignore_ascii_case("gif")),
+        "Unsupported capture type"
+    );
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            &HSTRING::from(path.as_os_str()),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        )
+    };
+    anyhow::ensure!(
+        result.0 as isize > 32,
+        "Could not open the image viewer. Check your Windows image app association."
+    );
     Ok(())
 }
 

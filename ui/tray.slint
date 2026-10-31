@@ -22,6 +22,10 @@ export component TrayMenu inherits Window {
     always-on-top: true;
     default-font-family: "Segoe UI Variable Text";
     in property <string> release-version;
+    in property <string> screenshot-hotkey: "Alt+Shift+S";
+    in property <string> history-hotkey: "Alt+Shift+V";
+    in property <string> full-hotkey: "Alt+Shift+F";
+    in property <string> gif-hotkey: "Alt+Shift+G";
     in-out property <int> selected: -1;
     callback action(string);
     callback dismiss();
@@ -47,10 +51,10 @@ export component TrayMenu inherits Window {
                 Text { x: parent.width - 93px; width: 83px; y: 10px; height: 16px; horizontal-alignment: right; vertical-alignment: center; text: root.release-version; font-size: 9px; color: #698bb8; }
             }
             Rectangle { height: 1px; background: #2a3443; }
-            MenuRow { label: "Open history"; shortcut: "Alt+Shift+V"; glyph: @image-url("icons/history.svg"); selected: root.selected == 0; activated => { root.action("history"); } }
-            MenuRow { label: "Screenshot"; shortcut: "Alt+Shift+S"; glyph: @image-url("icons/capture.svg"); selected: root.selected == 1; activated => { root.action("capture"); } }
-            MenuRow { label: "Full screenshot"; shortcut: "Alt+Shift+F"; glyph: @image-url("icons/capture.svg"); selected: root.selected == 2; activated => { root.action("full-capture"); } }
-            MenuRow { label: "Record GIF"; shortcut: "Alt+Shift+G"; glyph: @image-url("icons/record.svg"); selected: root.selected == 3; activated => { root.action("gif"); } }
+            MenuRow { label: "Open history"; shortcut: root.history-hotkey; glyph: @image-url("icons/history.svg"); selected: root.selected == 0; activated => { root.action("history"); } }
+            MenuRow { label: "Screenshot"; shortcut: root.screenshot-hotkey; glyph: @image-url("icons/capture.svg"); selected: root.selected == 1; activated => { root.action("capture"); } }
+            MenuRow { label: "Full screenshot"; shortcut: root.full-hotkey; glyph: @image-url("icons/capture.svg"); selected: root.selected == 2; activated => { root.action("full-capture"); } }
+            MenuRow { label: "Record GIF"; shortcut: root.gif-hotkey; glyph: @image-url("icons/record.svg"); selected: root.selected == 3; activated => { root.action("gif"); } }
             MenuRow { label: "Options"; glyph: @image-url("icons/gear.svg"); selected: root.selected == 4; activated => { root.action("options"); } }
             Rectangle { height: 1px; background: #2a3443; }
             MenuRow { label: "Exit SnipTory"; glyph: @image-url("icons/close.svg"); selected: root.selected == 5; danger: true; activated => { root.action("exit"); } }

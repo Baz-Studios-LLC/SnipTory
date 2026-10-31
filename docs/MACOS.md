@@ -49,3 +49,11 @@ these ad-hoc-signed test builds.
 
 Please start with capture, History, and clipboard testing. These are the first
 on-device checks after compiling on actual Mac CI runners.
+
+## Release maintenance
+
+The Package and release workflow builds Windows and both Mac architectures, then
+publishes their assets and update feeds together. Do not publish a latest release
+containing only Windows assets: Mac clients also use the latest release's feed
+directory. Increment VERSION and add release notes before running that workflow;
+published version tags and binaries must not be replaced.

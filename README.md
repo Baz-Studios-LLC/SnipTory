@@ -1,12 +1,16 @@
 # SnipTory
 
-**Capture. Recall. Paste.** A native Windows 11 visual memory utility from Baz Studios. Built with Rust 2024, Slint, Win32, and SQLite. Screenshots and clipboard contents remain local.
+**Capture. Recall. Paste.** A visual memory utility from Baz Studios. Windows is established; the first macOS test build is available for Apple Silicon and Intel. Built with Rust 2024, Slint, native desktop integration, and SQLite. Screenshots and clipboard contents remain local.
 
 [Download the installer](https://github.com/Baz-Studios-LLC/SnipTory/releases/latest) · [MIT license](LICENSE)
 
 ## Install and update
 
-Install **SnipTory-v013-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+For the Mac test build, see [macOS setup and testing](docs/MACOS.md). It includes
+screenshots, History, menu bar controls, clipboard integration, configurable
+shortcuts, and update packaging. Native Mac GIF recording is still pending.
+
+Install **SnipTory-v014-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -20,10 +24,10 @@ Application binaries install under `%LOCALAPPDATA%\BazStudios.SnipTory\`. Captur
 
 ## Development
 
-macOS and Linux/Bazzite preparation is underway. The shared library and Slint UI
-sources have separate cross-platform CI; native desktop backends remain to be
-implemented and tested. See [the porting guide](docs/PORTING.md) for the current
-boundary, machine diagnostics, and next steps. Windows remains the only released app.
+The shared library and Slint UI sources have cross-platform CI. A macOS frontend
+now compiles and packages on both Mac architectures, with on-device testing still
+required. Linux/Bazzite native integration remains pending. See [the porting
+guide](docs/PORTING.md) and [Mac testing guide](docs/MACOS.md).
 
 Requires stable Rust (1.92+), the `x86_64-pc-windows-msvc` target, Visual Studio C++ Build Tools, and the Windows SDK.
 
@@ -106,7 +110,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v013/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v014/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

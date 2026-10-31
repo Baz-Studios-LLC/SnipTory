@@ -37,6 +37,8 @@ export component OptionsPanel inherits Rectangle {
     in property <string> history-hotkey;
     in property <string> full-hotkey;
     in property <string> gif-hotkey;
+    in property <bool> gif-recording-supported: true;
+    in property <string> shortcut-help;
     in property <bool> shortcuts-busy;
     in property <string> shortcut-detail;
     callback configure-shortcuts(string,string,string,string);
@@ -82,15 +84,15 @@ export component OptionsPanel inherits Rectangle {
             }
         }
         Rectangle {
-            height: 288px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            height: root.gif-recording-supported ? 288px : 254px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
             VerticalLayout {
                 padding: 14px; spacing: 8px;
                 Text {height: 18px; text: "Keyboard shortcuts"; color: #e0e5ef; font-size: 12px; font-weight: 600;}
                 screenshot := ShortcutRow {label: "Screenshot"; value: root.screenshot-hotkey; busy: root.shortcuts-busy;}
                 history := ShortcutRow {label: "History"; value: root.history-hotkey; busy: root.shortcuts-busy;}
                 full := ShortcutRow {label: "Full screenshot"; value: root.full-hotkey; busy: root.shortcuts-busy;}
-                gif := ShortcutRow {label: "Record GIF"; value: root.gif-hotkey; busy: root.shortcuts-busy;}
-                Text {height: 28px; text: "Type a combination, e.g. Ctrl+Shift+S.\nUse Ctrl, Alt or Win with a letter, number or F1–F24."; color: #8591a6; font-size: 10px;}
+                gif := ShortcutRow {label: "Record GIF"; value: root.gif-hotkey; busy: root.shortcuts-busy;visible: root.gif-recording-supported;height: root.gif-recording-supported ? 34px : 0px;}
+                Text {height: 28px; text: root.shortcut-help; color: #8591a6; font-size: 10px;}
                 HorizontalLayout {
                     height: 30px; spacing: 8px;
                     Rectangle {

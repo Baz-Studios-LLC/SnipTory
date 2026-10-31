@@ -35,7 +35,12 @@ export component HistoryWindow inherits Window {
     always-on-top: true;
     icon: @image-url("../assets/sniptory.png");
     background: #111419;
-    default-font-family: "Segoe UI Variable Text";
+    in property <string> ui-font-family: "Segoe UI Variable Text";
+    default-font-family: root.ui-font-family;
+    in property <bool> native-title-drag;
+    in property <bool> gif-recording-supported: true;
+    in property <string> shortcut-help: "Type a combination, e.g. Ctrl+Shift+S.\nUse Ctrl, Alt or Win with a letter, number or F1–F24.";
+    callback drag-window();
     default-font-size: 12px;
     in property <[CaptureItem]> captures;
     in property <string> status: "Ready";
@@ -57,7 +62,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v013";
+    in property <string> release-version: "v014";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -116,6 +121,10 @@ export component HistoryWindow inherits Window {
             spacing: 0px;
             Rectangle {
                 height: 73px;
+                if root.native-title-drag : TouchArea {
+                    width: parent.width - 100px; height: parent.height;
+                    pointer-event(event) => {if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {root.drag-window();}}
+                }
                 // Native WM_NCHITTEST limits dragging to this 73px title bar.
                 // No TouchArea overlays the gallery or its header buttons.
                     Rectangle {
@@ -149,6 +158,8 @@ export component HistoryWindow inherits Window {
                 gif-hotkey: root.gif-hotkey;
                 shortcuts-busy: root.shortcuts-busy;
                 shortcut-detail: root.shortcut-detail;
+                gif-recording-supported: root.gif-recording-supported;
+                shortcut-help: root.shortcut-help;
                 configure-shortcuts(s,h,f,g) => {root.shortcuts-busy = true;root.shortcut-detail = "Saving shortcuts…";root.configure-shortcuts(s,h,f,g);}
                 update-label: root.update-label;
                 update-busy: root.update-busy;

@@ -1,0 +1,37 @@
+name: Build macOS app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo test --locked
+      - run: cargo build --locked --release
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
+      - run: bash scripts/Package-Mac.sh --skip-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SnipTory-macos-${{ matrix.arch }}
+          path: dist/v*-macos-${{ matrix.arch }}/*
+          if-no-files-found: error

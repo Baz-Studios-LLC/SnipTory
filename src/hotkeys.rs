@@ -32,10 +32,10 @@ pub fn parse(text: &str) -> Result<Binding> {
     let mut key_label = String::new();
     for token in text.split('+').map(|s| s.trim().to_ascii_uppercase()) {
         let modifier = match token.as_str() {
-            "ALT" => 1,
+            "ALT" | "OPTION" => 1,
             "CTRL" | "CONTROL" => 2,
             "SHIFT" => 4,
-            "WIN" | "WINDOWS" => 8,
+            "WIN" | "WINDOWS" | "CMD" | "COMMAND" | "META" | "SUPER" => 8,
             _ => 0,
         };
         if modifier != 0 {
@@ -122,6 +122,14 @@ mod tests {
                 modifiers: 6,
                 key: 0x7b,
                 label: "Ctrl+Shift+F12".into()
+            }
+        );
+        assert_eq!(
+            parse("Cmd+Option+9").unwrap(),
+            Binding {
+                modifiers: 9,
+                key: 0x39,
+                label: "Alt+Win+9".into()
             }
         );
         for text in [

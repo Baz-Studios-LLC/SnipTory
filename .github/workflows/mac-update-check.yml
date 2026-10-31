@@ -1,0 +1,35 @@
+name: Verify released Mac update
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  update:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download published v014 and v015 test inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist/update-check/input dist/update-check/Applications dist/update-check/cache
+          gh release download v014 --pattern 'SnipTory-v014-macos-arm64.zip' --dir dist/update-check/input
+          gh release download v015 --pattern 'SnipTory-v015-macos-arm64-full.nupkg' --pattern 'releases.osx-arm64.json' --dir dist/update-check/cache
+      - name: Apply published package to an isolated copy (no UI launch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$PWD/dist/update-check"
+          ditto -x -k "$base/input/SnipTory-v014-macos-arm64.zip" "$base/Applications"
+          app="$base/Applications/SnipTory.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = '014'
+          "$app/Contents/MacOS/UpdateMac" apply --silent --verbose --norestart --root "$app" --package "$base/cache/SnipTory-v015-macos-arm64-full.nupkg" --packageDir "$base/cache" --log "$base/update.log"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = '015'
+          codesign --verify --deep --strict "$app"
+          echo 'Published v014 → v015 bundle replacement succeeded'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-update-check-log
+          path: dist/update-check/update.log
+          if-no-files-found: warn

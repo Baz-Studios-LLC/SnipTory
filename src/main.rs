@@ -7,6 +7,7 @@ mod native;
 mod preview;
 mod recording;
 mod settings;
+mod thumbnail;
 mod updates;
 
 use anyhow::Result;
@@ -171,11 +172,8 @@ fn run() -> Result<()> {
                                     skipped += 1;
                                     continue;
                                 }
-                                let image = image::open(&entry.thumbnail)
-                                    .or_else(|_| image::open(&entry.path));
-                                match image {
+                                match history.preview(&entry) {
                                     Ok(image) => {
-                                        let image = image.thumbnail(400, 300).to_rgba8();
                                         let (w, h) = image.dimensions();
                                         previews.push((image.into_raw(), w, h));
                                         loaded.push(entry);

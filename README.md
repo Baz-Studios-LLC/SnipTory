@@ -6,7 +6,7 @@
 
 ## Install and update
 
-Install **SnipTory-v011-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v012-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -26,7 +26,7 @@ cargo test
 cargo build --release
 ```
 
-The gallery opens on launch. Closing it keeps the tray utility running. Left-click the tray icon to select a screenshot region; right-click for History, capture actions, Options, and Exit. The capture reticle has thin crosshair guides spanning the desktop. Preference-save feedback returns to Ready after two seconds.
+The gallery opens on launch. Closing it keeps the tray utility running. Left-click the tray icon to open History; right-click for History, capture actions, Options, and Exit. The capture reticle has thin crosshair guides spanning the desktop. Preference-save feedback returns to Ready after two seconds.
 
 | Action | Shortcut |
 | --- | --- |
@@ -65,6 +65,7 @@ Use the trash icon on a History card to delete its saved capture and thumbnail. 
 - `src/updates.rs`: installer-managed release checks, downloads, and restart coordination.
 - `src/recording.rs`: region capture, cursor composition, bounded frame queue, and streaming GIF encoding.
 - `src/preview.rs`: background GIF hover playback with bounded frame memory.
+- `src/thumbnail.rs`: shared aspect-preserving sizing for screenshot thumbnails, GIF posters, and animation frames. Legacy distorted previews are regenerated from originals as History loads.
 - `ui/history.slint`, `ui/options.slint`, `ui/tray.slint`: gallery, integrated Options, and matching tray menu.
 
 For screenshots, the desktop is frozen **before** the selector is displayed. Selection crops that immutable image, so selector borders never appear in output. GIF selection uses a translucent native overlay over the live desktop so motion remains visible while dragging. Slint runs on the main thread; native integration and storage each have a blocking worker. No idle polling timer is used. A temporary 30 ms timer waits for physical modifiers to be released before paste, with a two-second timeout.
@@ -96,7 +97,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v011/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v012/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 

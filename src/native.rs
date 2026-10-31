@@ -1151,7 +1151,7 @@ unsafe extern "system" fn procedure(
             TRAY => {
                 let event = lparam.0 as u32 & 0xffff;
                 if event == WM_LBUTTONUP || event == NIN_SELECT || event == (NIN_SELECT | 1) {
-                    begin_capture();
+                    show_history();
                 } else if event == WM_RBUTTONUP || event == WM_CONTEXTMENU {
                     tray_menu(hwnd);
                 }

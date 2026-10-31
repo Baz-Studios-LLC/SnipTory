@@ -176,7 +176,7 @@ fn encode(
         Err(_) if control.cancelled() => return Ok(None),
         Err(_) => bail!("Recording stopped before its first frame."),
     };
-    let preview = image::imageops::thumbnail(&first.pixels, 400, 300);
+    let preview = crate::thumbnail::create(&first.pixels);
     let file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)

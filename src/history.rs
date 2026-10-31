@@ -49,7 +49,7 @@ impl History {
             .join(format!("{id}.png"));
         let thumbnail = self.root.join("thumbnails").join(format!("{id}.png"));
         atomic_png(&path, pixels)?;
-        let thumb = image::imageops::thumbnail(pixels, 400, 300);
+        let thumb = crate::thumbnail::create(pixels);
         if let Err(error) = atomic_png(&thumbnail, &thumb) {
             let _ = fs::remove_file(&path);
             return Err(error);
@@ -81,6 +81,23 @@ impl History {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(entries)
+    }
+
+    pub fn preview(&self, entry: &Entry) -> Result<RgbaImage> {
+        let expected = crate::thumbnail::dimensions(entry.width, entry.height);
+        if let Ok(preview) = image::open(&entry.thumbnail) {
+            if (preview.width(), preview.height()) == expected {
+                return Ok(preview.to_rgba8());
+            }
+        }
+        // Older versions forced every thumbnail to 400x300. Rebuild from the
+        // untouched original; fitting an already stretched thumbnail cannot fix it.
+        let pixels = image::open(&entry.path)?.to_rgba8();
+        let preview = crate::thumbnail::create(&pixels);
+        self.validate_file(&entry.thumbnail, true)?;
+        // A cache write failure must not prevent displaying a valid capture.
+        let _ = atomic_png(&entry.thumbnail, &preview);
+        Ok(preview)
     }
 
     pub fn save_gif(&self, recording: &crate::recording::RecordedGif) -> Result<()> {
@@ -215,6 +232,57 @@ fn atomic_png(path: &Path, image: &RgbaImage) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_png_and_gif_previews_are_rebuilt_without_changing_originals() -> Result<()> {
+        let root = std::env::temp_dir().join(format!(
+            "sniptory-preview-repair-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        ));
+        let history = History::open(root.clone())?;
+        history.save(&RgbaImage::from_pixel(
+            320,
+            640,
+            image::Rgba([10, 30, 50, 255]),
+        ))?;
+        let png = history.list(1)?.remove(0);
+        let distorted = RgbaImage::from_pixel(400, 300, image::Rgba([100, 0, 0, 255]));
+        distorted.save(&png.thumbnail)?;
+        let gif_path = root.join("captures/gifs/repair.gif");
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(fs::File::create(&gif_path)?);
+            encoder.encode_frame(image::Frame::new(RgbaImage::from_pixel(
+                640,
+                320,
+                image::Rgba([20, 40, 60, 255]),
+            )))?;
+        }
+        history.save_gif(&crate::recording::RecordedGif {
+            path: gif_path,
+            preview: distorted,
+            width: 640,
+            height: 320,
+            duration_ms: 100,
+        })?;
+        drop(history);
+        let history = History::open(root.clone())?;
+        for entry in history.list(60)? {
+            let original = fs::read(&entry.path)?;
+            let preview = history.preview(&entry)?;
+            let expected = if entry.duration_ms.is_some() {
+                (400, 200)
+            } else {
+                (150, 300)
+            };
+            assert_eq!(preview.dimensions(), expected);
+            assert_eq!(image::open(&entry.thumbnail)?.to_rgba8(), preview);
+            assert_eq!(fs::read(&entry.path)?, original);
+            assert_eq!(history.preview(&entry)?, preview);
+        }
+        drop(history);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     #[test]
     fn captures_survive_reopening_and_have_decodable_thumbnails() -> Result<()> {
         let root = std::env::temp_dir().join(format!(

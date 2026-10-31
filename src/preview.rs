@@ -62,7 +62,7 @@ pub fn start(ui: slint::Weak<HistoryWindow>) -> std::io::Result<mpsc::Sender<Req
                                 (numerator as u64 / denominator.max(1) as u64).max(10),
                             );
                             if !in_flight.swap(true, Ordering::SeqCst) {
-                                let image = image::imageops::thumbnail(frame.buffer(), 400, 300);
+                                let image = crate::thumbnail::create(frame.buffer());
                                 let (w, h) = image.dimensions();
                                 let bytes = image.into_raw();
                                 let expected_id = id.clone();

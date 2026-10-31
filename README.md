@@ -20,6 +20,11 @@ Application binaries install under `%LOCALAPPDATA%\BazStudios.SnipTory\`. Captur
 
 ## Development
 
+macOS and Linux/Bazzite preparation is underway. The shared library and Slint UI
+sources have separate cross-platform CI; native desktop backends remain to be
+implemented and tested. See [the porting guide](docs/PORTING.md) for the current
+boundary, machine diagnostics, and next steps. Windows remains the only released app.
+
 Requires stable Rust (1.92+), the `x86_64-pc-windows-msvc` target, Visual Studio C++ Build Tools, and the Windows SDK.
 
 ```powershell

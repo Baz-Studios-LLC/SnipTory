@@ -2,14 +2,11 @@
 
 mod capture;
 mod clipboard;
-mod history;
-mod hotkeys;
 mod native;
 mod preview;
 mod recording;
-mod settings;
-mod thumbnail;
 mod updates;
+use sniptory::{history, hotkeys, settings, thumbnail};
 
 use anyhow::Result;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};

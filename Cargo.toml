@@ -5,21 +5,23 @@ license = "MIT"
 authors = ["Baz Studios LLC"]
 repository = "https://github.com/Baz-Studios-LLC/SnipTory"
 edition = "2024"
-description = "Capture. Recall. Paste. A native Windows screenshot utility."
+description = "Capture. Recall. Paste. A visual memory utility."
 publish = false
 build = "build.rs"
 
 [dependencies]
 anyhow = "1"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
 image = { version = "0.25", default-features = false, features = ["png", "gif"] }
-gif = "0.14"
 rusqlite = { version = "0.41", default-features = false, features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+gif = "0.14"
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-18", "raw-window-handle-06"] }
 raw-window-handle = "0.6"
 velopack = "=1.2.161"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 windows = { version = "0.62", features = [
     "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm",
     "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_LibraryLoader",

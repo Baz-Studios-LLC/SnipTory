@@ -42,13 +42,7 @@ impl Control {
         self.0.mode.load(Ordering::SeqCst) == 2
     }
 }
-pub struct RecordedGif {
-    pub path: PathBuf,
-    pub preview: RgbaImage,
-    pub width: u32,
-    pub height: u32,
-    pub duration_ms: u64,
-}
+pub use sniptory::media::RecordedGif;
 struct Sample {
     pixels: RgbaImage,
     at: Duration,

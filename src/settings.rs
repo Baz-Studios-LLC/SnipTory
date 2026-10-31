@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+#[cfg(windows)]
 use windows::{Win32::System::Registry::*, core::*};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -28,10 +29,7 @@ impl Default for Settings {
 }
 pub type Shared = Arc<Mutex<Settings>>;
 pub fn root() -> Result<PathBuf> {
-    Ok(
-        PathBuf::from(std::env::var_os("LOCALAPPDATA").context("LOCALAPPDATA is unavailable")?)
-            .join("Sniptory"),
-    )
+    crate::paths::data_root()
 }
 pub fn load(root: &Path) -> Settings {
     let mut settings: Settings = fs::read(root.join("settings.json"))
@@ -54,6 +52,7 @@ pub fn save(root: &Path, settings: &Settings) -> Result<()> {
     fs::rename(temp, path)?;
     Ok(())
 }
+#[cfg(windows)]
 pub fn startup(enabled: bool) -> Result<()> {
     // SAFETY: only this app's per-user Run value is changed. Windows owns the
     // opened key; it is closed on both success and failure.

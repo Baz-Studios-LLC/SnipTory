@@ -100,7 +100,7 @@ impl History {
         Ok(preview)
     }
 
-    pub fn save_gif(&self, recording: &crate::recording::RecordedGif) -> Result<()> {
+    pub fn save_gif(&self, recording: &crate::media::RecordedGif) -> Result<()> {
         let id = recording
             .path
             .file_stem()
@@ -256,7 +256,7 @@ mod tests {
                 image::Rgba([20, 40, 60, 255]),
             )))?;
         }
-        history.save_gif(&crate::recording::RecordedGif {
+        history.save_gif(&crate::media::RecordedGif {
             path: gif_path,
             preview: distorted,
             width: 640,
@@ -301,7 +301,7 @@ mod tests {
         assert_eq!(entries[0].height, 480);
         let gif_path = root.join("captures/gifs/test.gif");
         fs::write(&gif_path, b"GIF89a")?;
-        history.save_gif(&crate::recording::RecordedGif {
+        history.save_gif(&crate::media::RecordedGif {
             path: gif_path.clone(),
             preview: image::imageops::thumbnail(&pixels, 400, 300),
             width: 640,
@@ -342,7 +342,7 @@ mod tests {
         fs::write(&in_progress, b"unfinished")?;
         let gif = root.join("captures/gifs/gif-row.gif");
         fs::write(&gif, b"GIF89a")?;
-        history.save_gif(&crate::recording::RecordedGif {
+        history.save_gif(&crate::media::RecordedGif {
             path: gif.clone(),
             preview: image.clone(),
             width: 8,

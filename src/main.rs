@@ -133,6 +133,7 @@ fn run() -> Result<()> {
                         StoreCommand::Save(pixels) => {
                             history.save(&pixels)?;
                             status(&worker_ui, "Saved locally. Ready when you are.");
+                            let _ = worker_store.send(StoreCommand::Load(60));
                         }
                         StoreCommand::SaveGif(recording) => {
                             history.save_gif(&recording)?;

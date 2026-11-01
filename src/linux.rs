@@ -746,8 +746,8 @@ pub fn run() -> Result<()> {
     slint::run_event_loop_until_quit()?;
     app.stop_preview();
     APP.with(|a| a.borrow_mut().take());
-    drop(lock);
     let _ = fs::remove_file(socket);
+    drop(lock);
     Ok(())
 }
 #[cfg(test)]

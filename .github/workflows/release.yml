@@ -25,8 +25,10 @@ jobs:
           if-no-files-found: error
   macos:
     uses: ./.github/workflows/macos.yml
+  linux:
+    uses: ./.github/workflows/linux.yml
   publish:
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

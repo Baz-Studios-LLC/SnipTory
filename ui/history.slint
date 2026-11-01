@@ -40,6 +40,10 @@ export component HistoryWindow inherits Window {
     default-font-family: root.ui-font-family;
     in property <bool> native-title-drag;
     in property <bool> gif-recording-supported: true;
+    in property <bool> paste-supported: true;
+    in property <bool> show-quit;
+    in property <string> startup-detail: "Ready in the tray when Windows starts";
+    callback quit-app();
     in property <string> shortcut-help: "Type a combination, e.g. Ctrl+Shift+S.\nUse Ctrl, Alt or Win with a letter, number or F1–F24.";
     callback drag-window();
     default-font-size: 12px;
@@ -63,7 +67,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v016";
+    in property <string> release-version: "v017";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -166,6 +170,10 @@ export component HistoryWindow inherits Window {
                 shortcuts-busy: root.shortcuts-busy;
                 shortcut-detail: root.shortcut-detail;
                 gif-recording-supported: root.gif-recording-supported;
+                paste-supported: root.paste-supported;
+                show-quit: root.show-quit;
+                startup-detail: root.startup-detail;
+                quit => {root.quit-app();}
                 shortcut-help: root.shortcut-help;
                 configure-shortcuts(s,h,f,g) => {root.shortcuts-busy = true;root.shortcut-detail = "Saving shortcuts…";root.configure-shortcuts(s,h,f,g);}
                 update-label: root.update-label;

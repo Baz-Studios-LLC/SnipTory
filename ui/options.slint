@@ -39,6 +39,10 @@ export component OptionsPanel inherits Rectangle {
     in property <string> full-hotkey;
     in property <string> gif-hotkey;
     in property <bool> gif-recording-supported: true;
+    in property <bool> paste-supported: true;
+    in property <bool> show-quit;
+    in property <string> startup-detail;
+    callback quit();
     in property <string> shortcut-help;
     in property <bool> shortcuts-busy;
     in property <string> shortcut-detail;
@@ -80,14 +84,14 @@ export component OptionsPanel inherits Rectangle {
             }
         }
         Rectangle {
-            height: 218px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            height: root.paste-supported ? 218px : 145px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
             VerticalLayout {
                 spacing: 0px; padding: 0px;
-                Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Launch at sign-in"; detail: "Ready in the tray when Windows starts"; checked <=> root.launch-at-sign-in; toggled(value) => { root.changed-setting("startup",value); } }
+                Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Launch at sign-in"; detail: root.startup-detail; checked <=> root.launch-at-sign-in; toggled(value) => { root.changed-setting("startup",value); } }
                 Rectangle { height: 1px; background: #2b3340; }
                 Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Automatic update checks"; detail: "Check quietly; choose when to update"; checked <=> root.automatic-updates; toggled(value) => { root.changed-setting("updates",value); } }
-                Rectangle { height: 1px; background: #2b3340; }
-                Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Paste when choosing a capture"; detail: "Turn off to copy without sending Ctrl+V"; checked <=> root.paste-on-select; toggled(value) => { root.changed-setting("paste",value); } }
+                Rectangle { height: root.paste-supported ? 1px : 0px; background: #2b3340; }
+                Preference { visible: root.paste-supported; height: root.paste-supported ? 72px : 0px; locked: root.folder-busy || root.shortcuts-busy; title: "Paste when choosing a capture"; detail: "Turn off to copy without sending Ctrl+V"; checked <=> root.paste-on-select; toggled(value) => { root.changed-setting("paste",value); } }
             }
         }
         Rectangle {
@@ -167,6 +171,11 @@ export component OptionsPanel inherits Rectangle {
                 Text { text: root.update-label; color: #d6e7ff; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
                 check-touch := TouchArea { enabled: !root.update-busy; clicked => { root.update(); } }
             }
+        }
+        if root.show-quit : Rectangle {
+            height: 30px; border-radius: 6px; background: quit-touch.has-hover ? #2b3a50 : #1f2b3c;
+            Text {text: "Quit SnipTory"; color: #bdd0e9; font-size: 11px; horizontal-alignment: center; vertical-alignment: center;}
+            quit-touch := TouchArea {clicked => {root.quit();}}
         }
         Text { text: root.update-detail; color: #8294ae; font-size: 10px; wrap: word-wrap; }
       }

@@ -10,7 +10,7 @@ For the Mac test build, see [macOS setup and testing](docs/MACOS.md). It include
 screenshots, History, menu bar controls, clipboard integration, configurable
 shortcuts, and update packaging. Native Mac GIF recording is still pending.
 
-Install **SnipTory-v015-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
+Install **SnipTory-v016-Setup.exe** once. The app installs for your Windows user, creates a Start menu shortcut, and can be uninstalled through Windows Settings. The blue-and-white app icon appears on the taskbar; the tray glyph is white on transparent.
 
 Open **Options** using the gear in History or the matching tray menu. Options include launch at sign-in, automatic update checks, copy-only versus paste-back behavior, opening the capture folder, restarting the app, and checking for updates. History and Options share one always-on-top window.
 
@@ -110,7 +110,7 @@ dotnet tool install vpk --version 1.2.161 --tool-path .tools/vpk
 ./scripts/Package.ps1
 ```
 
-This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v015/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
+This builds the release executable, generates third-party notices, and packages the installer, portable ZIP, full update package, feed, and SHA-256 checksums under `dist/v016/`. Only the staged application files are packaged; captures and development files are excluded. Package and release filenames are normalized to the public integer release sequence, and the update feed is rewritten to match.
 
 For the next release, advance `VERSION`, update Cargo's tool-required version metadata to match its integer value, and add the corresponding file under `release-notes/`. Commit, then run the **Package and release** GitHub Actions workflow. Publish a new release rather than replacing binaries under an existing tag.
 
@@ -119,3 +119,5 @@ For the next release, advance `VERSION`, update Cargo's tool-required version me
 SnipTory's source is **MIT**, copyright Baz Studios LLC. Dependencies retain their own licenses. Slint is used under its Royalty-free Desktop, Mobile, and Web Applications License, with attribution on this public repository and the release download pages. The installer includes third-party notices and the Slint license.
 
 [![Made with Slint](assets/MadeWithSlint.png)](https://slint.dev)
+
+Choose **Options → Save location → Change…** to save new captures in a different folder. Screenshots and GIFs use separate subfolders. Existing captures stay in place and remain in History. **Use default** restores the original save location. The history database and thumbnails stay in the app data folder. A disconnected or unwritable destination reports an error instead of saving elsewhere.

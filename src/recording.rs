@@ -78,7 +78,7 @@ pub fn start(
 }
 
 fn run(region: RECT, root: PathBuf, control: &Control) -> Result<Option<RecordedGif>> {
-    let folder = root.join("captures/gifs");
+    let folder = root.join("gifs");
     fs::create_dir_all(&folder)?;
     let id = format!(
         "{}-{}",

@@ -35,18 +35,46 @@ impl History {
                 id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, kind TEXT NOT NULL,
                 path TEXT NOT NULL, thumbnail TEXT NOT NULL, width INTEGER NOT NULL,
                 height INTEGER NOT NULL, duration_ms INTEGER, size INTEGER NOT NULL);
-            CREATE INDEX IF NOT EXISTS captures_timestamp ON captures(timestamp DESC, id DESC);",
+            CREATE INDEX IF NOT EXISTS captures_timestamp ON captures(timestamp DESC, id DESC);
+            CREATE TABLE IF NOT EXISTS capture_folders (path TEXT PRIMARY KEY);",
         )?;
-        Ok(Self { db, root })
+        let history = Self { db, root };
+        // Keep previous locations trusted for indexed-file cleanup after a switch.
+        history.approve_capture_folder(&history.root.join("captures"), false)?;
+        let configured = crate::settings::load(&history.root).capture_root(&history.root);
+        let _ = history.approve_capture_folder(&configured, false);
+        Ok(history)
+    }
+
+    fn approve_capture_folder(&self, folder: &Path, check_writable: bool) -> Result<PathBuf> {
+        let folder = crate::settings::prepare_capture_folder(folder, check_writable)?;
+        for name in ["screenshots", "gifs"] {
+            let canonical = folder.join(name).canonicalize()?;
+            self.db.execute(
+                "INSERT OR IGNORE INTO capture_folders(path) VALUES (?1)",
+                [canonical.to_string_lossy().as_ref()],
+            )?;
+        }
+        Ok(folder)
+    }
+
+    pub fn change_capture_folder(
+        &self,
+        folder: Option<PathBuf>,
+    ) -> Result<crate::settings::Settings> {
+        let mut settings = crate::settings::load(&self.root);
+        settings.capture_folder = folder;
+        self.approve_capture_folder(&settings.capture_root(&self.root), true)?;
+        crate::settings::save(&self.root, &settings)?;
+        Ok(settings)
     }
 
     pub fn save(&self, pixels: &RgbaImage) -> Result<()> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
         let id = format!("{}-{}", now.as_nanos(), std::process::id());
-        let path = self
-            .root
-            .join("captures/screenshots")
-            .join(format!("{id}.png"));
+        let folder = crate::settings::load(&self.root).capture_root(&self.root);
+        let folder = self.approve_capture_folder(&folder, false)?;
+        let path = folder.join("screenshots").join(format!("{id}.png"));
         let thumbnail = self.root.join("thumbnails").join(format!("{id}.png"));
         atomic_png(&path, pixels)?;
         let thumb = crate::thumbnail::create(pixels);
@@ -101,6 +129,7 @@ impl History {
     }
 
     pub fn save_gif(&self, recording: &crate::media::RecordedGif) -> Result<()> {
+        self.validate_file(&recording.path, false)?;
         let id = recording
             .path
             .file_stem()
@@ -171,21 +200,16 @@ impl History {
             .parent()
             .context("Capture path has no parent")?
             .canonicalize()?;
-        let allowed = if thumbnail {
-            vec![self.root.join("thumbnails")]
+        let trusted = if thumbnail {
+            let folder = self.root.join("thumbnails").canonicalize()?;
+            folder.starts_with(&root) && parent == folder
         } else {
-            vec![
-                self.root.join("captures/screenshots"),
-                self.root.join("captures/gifs"),
-            ]
+            self.db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM capture_folders WHERE path=?1)",
+                [parent.to_string_lossy().as_ref()],
+                |row| row.get::<_, bool>(0),
+            )?
         };
-        let mut trusted = false;
-        for folder in allowed {
-            let folder = folder.canonicalize()?;
-            if folder.starts_with(&root) && parent == folder {
-                trusted = true;
-            }
-        }
         anyhow::ensure!(
             trusted,
             "Refusing to delete a file outside SnipTory's capture folders"
@@ -232,6 +256,95 @@ fn atomic_png(path: &Path, image: &RgbaImage) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn changing_folders_preserves_history_and_in_progress_gifs() -> Result<()> {
+        let root = std::env::temp_dir().join(format!(
+            "sniptory-folder-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        ));
+        let data = root.join("data");
+        let custom = root.join("chosen");
+        fs::create_dir_all(&custom)?;
+        let history = History::open(data.clone())?;
+        let pixels = RgbaImage::new(8, 8);
+        history.save(&pixels)?;
+        let old = history.list(1)?.remove(0);
+        history.change_capture_folder(Some(custom.clone()))?;
+        history.save(&pixels)?;
+        let chosen = history.list(1)?.remove(0);
+        assert_eq!(
+            chosen.path.parent(),
+            Some(custom.join("screenshots").as_path())
+        );
+        assert_eq!(
+            chosen.thumbnail.parent(),
+            Some(data.join("thumbnails").as_path())
+        );
+        let gif = custom.join("gifs/active.gif");
+        fs::write(&gif, b"GIF89a")?;
+        history.change_capture_folder(None)?;
+        history.save_gif(&crate::media::RecordedGif {
+            path: gif.clone(),
+            preview: pixels.clone(),
+            width: 8,
+            height: 8,
+            duration_ms: 100,
+        })?;
+        history.save(&pixels)?;
+        let unrelated = custom.join("screenshots/keep.txt");
+        fs::write(&unrelated, b"keep")?;
+        drop(history);
+        let history = History::open(data.clone())?;
+        assert_eq!(history.list(60)?.len(), 4);
+        assert!(old.path.exists());
+        assert!(chosen.path.exists());
+        assert!(history.delete(&chosen.id)?);
+        assert_eq!(history.clear()?, 3);
+        assert!(!gif.exists());
+        assert!(unrelated.exists());
+        drop(history);
+        assert!(root.starts_with(std::env::temp_dir()));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn unavailable_folder_does_not_change_preferences_or_redirect_saves() -> Result<()> {
+        let root = std::env::temp_dir().join(format!(
+            "sniptory-folder-offline-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        ));
+        let history = History::open(root.clone())?;
+        let missing = root.join("missing-drive");
+        assert!(
+            history
+                .change_capture_folder(Some(missing.clone()))
+                .is_err()
+        );
+        assert!(crate::settings::load(&root).capture_folder.is_none());
+        assert!(
+            history
+                .change_capture_folder(Some(PathBuf::from("relative")))
+                .is_err()
+        );
+        let mut prefs = crate::settings::load(&root);
+        prefs.capture_folder = Some(missing.clone());
+        crate::settings::save(&root, &prefs)?;
+        drop(history);
+        let history = History::open(root.clone())?;
+        assert_eq!(
+            crate::settings::load(&root).capture_folder,
+            Some(missing.clone())
+        );
+        assert!(history.save(&RgbaImage::new(8, 8)).is_err());
+        assert!(!missing.exists());
+        assert!(history.list(60)?.is_empty());
+        drop(history);
+        assert!(root.starts_with(std::env::temp_dir()));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     #[test]
     fn legacy_png_and_gif_previews_are_rebuilt_without_changing_originals() -> Result<()> {
         let root = std::env::temp_dir().join(format!(

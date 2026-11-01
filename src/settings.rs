@@ -16,6 +16,7 @@ pub struct Settings {
     pub automatic_updates: bool,
     pub paste_on_select: bool,
     pub shortcuts: crate::hotkeys::Shortcuts,
+    pub capture_folder: Option<PathBuf>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -24,8 +25,52 @@ impl Default for Settings {
             automatic_updates: true,
             paste_on_select: true,
             shortcuts: Default::default(),
+            capture_folder: None,
         }
     }
+}
+impl Settings {
+    pub fn capture_root(&self, data_root: &Path) -> PathBuf {
+        self.capture_folder
+            .clone()
+            .unwrap_or_else(|| data_root.join("captures"))
+    }
+}
+
+/// Prepare only the two capture subfolders, never a missing/removable root.
+/// A failed custom location must not silently redirect saves elsewhere.
+pub fn prepare_capture_folder(folder: &Path, check_writable: bool) -> Result<PathBuf> {
+    use anyhow::{Context, ensure};
+    ensure!(folder.is_absolute(), "Choose an absolute capture folder");
+    let canonical = folder.canonicalize().context(
+        "Capture folder is unavailable. Reconnect the drive or choose another folder in Options.",
+    )?;
+    ensure!(canonical.is_dir(), "Choose a folder for captures");
+    for name in ["screenshots", "gifs"] {
+        let child = folder.join(name);
+        fs::create_dir_all(&child).with_context(|| format!("Cannot create the {name} folder"))?;
+        ensure!(
+            child.canonicalize()?.parent() == Some(canonical.as_path()),
+            "Capture subfolders must stay inside the selected folder"
+        );
+        if check_writable {
+            let probe = child.join(format!(
+                ".sniptory-write-check-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_nanos()
+            ));
+            let file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&probe)
+                .with_context(|| format!("The {name} folder is not writable"))?;
+            drop(file);
+            fs::remove_file(probe).context("Could not finish checking the capture folder")?;
+        }
+    }
+    Ok(folder.to_path_buf())
 }
 pub type Shared = Arc<Mutex<Settings>>;
 pub fn root() -> Result<PathBuf> {

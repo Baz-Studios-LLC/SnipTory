@@ -63,7 +63,7 @@ export component HistoryWindow inherits Window {
     callback refresh-gallery();
     callback update-action();
     callback check-updates();
-    in property <string> release-version: "v015";
+    in property <string> release-version: "v016";
     in property <string> update-label: "Check for updates";
     in property <string> update-detail: "";
     in property <bool> update-busy;
@@ -81,6 +81,12 @@ export component HistoryWindow inherits Window {
     in-out property <bool> shortcuts-busy;
     in-out property <string> shortcut-detail;
     callback open-folder();
+    callback choose-capture-folder();
+    callback reset-capture-folder();
+    in-out property <string> capture-folder;
+    in-out property <bool> capture-folder-custom;
+    in-out property <bool> folder-busy;
+    in-out property <string> folder-detail;
     callback tray-menu();
     callback restart-app();
 
@@ -168,6 +174,12 @@ export component HistoryWindow inherits Window {
                 back => { root.show-options = false; }
                 changed-setting(key,value) => { root.setting-changed(key,value); }
                 open-folder => { root.open-folder(); }
+                capture-folder: root.capture-folder;
+                capture-folder-custom: root.capture-folder-custom;
+                folder-busy: root.folder-busy;
+                folder-detail: root.folder-detail;
+                choose-capture-folder => {root.folder-busy = true;root.folder-detail = "";root.choose-capture-folder();}
+                reset-capture-folder => {root.folder-busy = true;root.folder-detail = "";root.reset-capture-folder();}
                 restart => { root.restart-app(); }
                 update => { root.update-action(); }
                 history-busy: root.history-busy;

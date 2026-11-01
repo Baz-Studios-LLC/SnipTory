@@ -31,6 +31,7 @@ pub enum Command {
     Action(Action),
     Gallery(Vec<Entry>, Vec<image::RgbaImage>, bool),
     SavedSettings(Settings, Option<String>),
+    SavedCaptureFolder(std::result::Result<Settings, String>),
     Status(String),
     CaptureFinished,
     PasteReady(i32),
@@ -68,6 +69,7 @@ enum Job {
     Delete(String),
     Clear,
     Settings(Settings),
+    CaptureFolder(Option<PathBuf>),
     Apply(velopack::UpdateManager, velopack::VelopackAsset),
     Quit,
     Restart,
@@ -179,6 +181,16 @@ fn copy_capture(path: &Path) -> Result<()> {
     }
 }
 fn apply_preferences(ui: &HistoryWindow, settings: &Settings) {
+    if let Ok(root) = settings::root() {
+        ui.set_capture_folder(
+            settings
+                .capture_root(&root)
+                .to_string_lossy()
+                .as_ref()
+                .into(),
+        );
+    }
+    ui.set_capture_folder_custom(settings.capture_folder.is_some());
     ui.set_launch_at_sign_in(settings.launch_at_sign_in);
     ui.set_automatic_updates(settings.automatic_updates);
     ui.set_paste_on_select(settings.paste_on_select);
@@ -529,6 +541,28 @@ fn wire(ui: &HistoryWindow, app: &Rc<App>) -> Result<()> {
         let _ = a.handle(Command::Action(Action::Folder));
     });
     let a = app.clone();
+    ui.on_choose_capture_folder(move || {
+        let current = settings::load(&a.root).capture_root(&a.root);
+        match rfd::FileDialog::new()
+            .set_title("Choose capture folder")
+            .set_directory(current)
+            .pick_folder()
+        {
+            Some(folder) => {
+                let _ = a.jobs.send(Job::CaptureFolder(Some(folder)));
+            }
+            None => {
+                if let Some(ui) = a.ui.upgrade() {
+                    ui.set_folder_busy(false);
+                }
+            }
+        }
+    });
+    let a = app.clone();
+    ui.on_reset_capture_folder(move || {
+        let _ = a.jobs.send(Job::CaptureFolder(None));
+    });
+    let a = app.clone();
     ui.on_restart_app(move || {
         let _ = a.handle(Command::Action(Action::Restart));
     });
@@ -718,9 +752,12 @@ impl App {
                             .send(Job::Capture(matches!(action, Action::Full)))?;
                     }
                     Action::Folder => {
-                        Process::new("/usr/bin/open")
-                            .arg(self.root.join("captures"))
-                            .spawn()?;
+                        let folder = settings::load(&self.root).capture_root(&self.root);
+                        anyhow::ensure!(
+                            folder.is_dir(),
+                            "Capture folder is unavailable. Reconnect the drive or choose another folder in Options."
+                        );
+                        Process::new("/usr/bin/open").arg(folder).spawn()?;
                     }
                     Action::Quit | Action::Restart => {
                         if self.capture_busy.get() {
@@ -790,6 +827,21 @@ impl App {
             Command::CaptureFinished => {
                 self.capture_busy.set(false);
                 self.status("Ready");
+            }
+            Command::SavedCaptureFolder(result) => {
+                if let Some(ui) = self.ui.upgrade() {
+                    ui.set_folder_busy(false);
+                    match result {
+                        Ok(settings) => {
+                            apply_preferences(&ui, &settings);
+                            ui.set_folder_detail(
+                                "Save location updated. Existing captures stay where they are."
+                                    .into(),
+                            );
+                        }
+                        Err(detail) => ui.set_folder_detail(detail.into()),
+                    }
+                }
             }
             Command::SavedSettings(settings, error) => {
                 if let Err(error) = self.configure_keys(&settings.shortcuts) {
@@ -957,6 +1009,15 @@ pub fn run() -> Result<()> {
                             Bridge.send(Command::Status(format!(
                                 "History cleared · {count} captures deleted"
                             )));
+                        }
+                        Job::CaptureFolder(folder) => {
+                            let result = history
+                                .change_capture_folder(folder)
+                                .map_err(|error| format!("{error:#}"));
+                            if let Ok(settings) = &result {
+                                *worker_prefs.lock().unwrap() = settings.clone();
+                            }
+                            Bridge.send(Command::SavedCaptureFolder(result));
                         }
                         Job::Settings(settings) => {
                             let old = settings::load(&worker_root);

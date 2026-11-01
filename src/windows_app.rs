@@ -26,6 +26,7 @@ pub enum StoreCommand {
     Paste(PathBuf),
     ApplyUpdate(velopack::UpdateManager, velopack::VelopackAsset),
     Settings(settings::Settings),
+    CaptureFolder(Option<PathBuf>),
     Restart,
     Exit,
 }
@@ -229,6 +230,23 @@ fn run() -> Result<()> {
                                 }
                             }
                         }
+                        StoreCommand::CaptureFolder(folder) => {
+                            let result = history.change_capture_folder(folder);
+                            match result {
+                                Ok(settings) => {
+                                    *storage_preferences.lock().unwrap() = settings.clone();
+                                    let _ = worker_ui.upgrade_in_event_loop(move |ui| {
+                                        apply_preferences(&ui,&settings);
+                                        ui.set_folder_busy(false);
+                                        ui.set_folder_detail("Save location updated. Existing captures stay where they are.".into());
+                                    });
+                                }
+                                Err(error) => {
+                                    let detail=format!("{error:#}");
+                                    let _ = worker_ui.upgrade_in_event_loop(move |ui| {ui.set_folder_busy(false);ui.set_folder_detail(detail.into());});
+                                }
+                            }
+                        }
                         StoreCommand::Settings(new_settings) => {
                             let old = settings::load(&root);
                             let saved = worker_bridge
@@ -390,8 +408,42 @@ fn run() -> Result<()> {
             b.send(native::Command::ViewCapture(entry.path.clone()));
         }
     });
+    let folder_root = storage_root.clone();
+    let w = ui.as_weak();
     ui.on_open_folder(move || {
-        native::open_folder(&storage_root.join("captures"));
+        let folder = settings::load(&folder_root).capture_root(&folder_root);
+        if folder.is_dir() {
+            native::open_folder(&folder);
+        } else {
+            status(
+                &w,
+                "Capture folder is unavailable. Reconnect the drive or choose another folder.",
+            );
+        }
+    });
+    let tx = store_tx.clone();
+    let folder_root = storage_root.clone();
+    let w = ui.as_weak();
+    ui.on_choose_capture_folder(move || {
+        let current = settings::load(&folder_root).capture_root(&folder_root);
+        match rfd::FileDialog::new()
+            .set_title("Choose where SnipTory saves captures")
+            .set_directory(current)
+            .pick_folder()
+        {
+            Some(folder) => {
+                let _ = tx.send(StoreCommand::CaptureFolder(Some(folder)));
+            }
+            None => {
+                if let Some(ui) = w.upgrade() {
+                    ui.set_folder_busy(false);
+                }
+            }
+        }
+    });
+    let tx = store_tx.clone();
+    ui.on_reset_capture_folder(move || {
+        let _ = tx.send(StoreCommand::CaptureFolder(None));
     });
     let b = bridge.clone();
     ui.on_restart_app(move || {
@@ -542,6 +594,16 @@ fn run() -> Result<()> {
 }
 
 fn apply_preferences(ui: &HistoryWindow, settings: &settings::Settings) {
+    if let Ok(root) = settings::root() {
+        ui.set_capture_folder(
+            settings
+                .capture_root(&root)
+                .to_string_lossy()
+                .as_ref()
+                .into(),
+        );
+    }
+    ui.set_capture_folder_custom(settings.capture_folder.is_some());
     ui.set_launch_at_sign_in(settings.launch_at_sign_in);
     ui.set_automatic_updates(settings.automatic_updates);
     ui.set_paste_on_select(settings.paste_on_select);

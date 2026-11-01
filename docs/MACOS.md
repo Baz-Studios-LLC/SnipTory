@@ -1,9 +1,9 @@
 # macOS first test build
 
-Download the ZIP matching your Mac from the v015 release:
+Download the ZIP matching your Mac from the v016 release:
 
-- `SnipTory-v015-macos-arm64.zip`: Apple Silicon (M-series).
-- `SnipTory-v015-macos-x64.zip`: Intel.
+- `SnipTory-v016-macos-arm64.zip`: Apple Silicon (M-series).
+- `SnipTory-v016-macos-x64.zip`: Intel.
 
 Extract it and move **SnipTory.app** into a writable Applications folder
 (for example `~/Applications`), then open it. macOS 13 or later is required.

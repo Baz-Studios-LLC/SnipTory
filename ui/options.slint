@@ -2,6 +2,7 @@ import { ScrollView } from "std-widgets.slint";
 
 component Preference inherits Rectangle {
     in property <string> title;
+    in property <bool> locked;
     in property <string> detail;
     in-out property <bool> checked;
     callback toggled(bool);
@@ -14,7 +15,7 @@ component Preference inherits Rectangle {
         background: root.checked ? #447bbf : #343d4c;
         animate background { duration: 100ms; }
         Rectangle { x: root.checked ? 17px : 3px; y: 3px; width: 13px; height: 13px; border-radius: 7px; background: #f5f8ff; animate x { duration: 100ms; } }
-        TouchArea { clicked => { root.checked = !root.checked; root.toggled(root.checked); } }
+        TouchArea { enabled: !root.locked; clicked => { root.checked = !root.checked; root.toggled(root.checked); } }
     }
 }
 
@@ -48,6 +49,12 @@ export component OptionsPanel inherits Rectangle {
     callback changed-setting(string,bool);
     callback back();
     callback open-folder();
+    callback choose-capture-folder();
+    callback reset-capture-folder();
+    in property <string> capture-folder;
+    in property <bool> capture-folder-custom;
+    in property <bool> folder-busy;
+    in property <string> folder-detail;
     callback restart();
     callback update();
     callback clear-history();
@@ -76,11 +83,11 @@ export component OptionsPanel inherits Rectangle {
             height: 218px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
             VerticalLayout {
                 spacing: 0px; padding: 0px;
-                Preference { title: "Launch at sign-in"; detail: "Ready in the tray when Windows starts"; checked <=> root.launch-at-sign-in; toggled(value) => { root.changed-setting("startup",value); } }
+                Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Launch at sign-in"; detail: "Ready in the tray when Windows starts"; checked <=> root.launch-at-sign-in; toggled(value) => { root.changed-setting("startup",value); } }
                 Rectangle { height: 1px; background: #2b3340; }
-                Preference { title: "Automatic update checks"; detail: "Check quietly; choose when to update"; checked <=> root.automatic-updates; toggled(value) => { root.changed-setting("updates",value); } }
+                Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Automatic update checks"; detail: "Check quietly; choose when to update"; checked <=> root.automatic-updates; toggled(value) => { root.changed-setting("updates",value); } }
                 Rectangle { height: 1px; background: #2b3340; }
-                Preference { title: "Paste when choosing a capture"; detail: "Turn off to copy without sending Ctrl+V"; checked <=> root.paste-on-select; toggled(value) => { root.changed-setting("paste",value); } }
+                Preference { locked: root.folder-busy || root.shortcuts-busy; title: "Paste when choosing a capture"; detail: "Turn off to copy without sending Ctrl+V"; checked <=> root.paste-on-select; toggled(value) => { root.changed-setting("paste",value); } }
             }
         }
         Rectangle {
@@ -88,32 +95,58 @@ export component OptionsPanel inherits Rectangle {
             VerticalLayout {
                 padding: 14px; spacing: 8px;
                 Text {height: 18px; text: "Keyboard shortcuts"; color: #e0e5ef; font-size: 12px; font-weight: 600;}
-                screenshot := ShortcutRow {label: "Screenshot"; value: root.screenshot-hotkey; busy: root.shortcuts-busy;}
-                history := ShortcutRow {label: "History"; value: root.history-hotkey; busy: root.shortcuts-busy;}
-                full := ShortcutRow {label: "Full screenshot"; value: root.full-hotkey; busy: root.shortcuts-busy;}
-                gif := ShortcutRow {label: "Record GIF"; value: root.gif-hotkey; busy: root.shortcuts-busy;visible: root.gif-recording-supported;height: root.gif-recording-supported ? 34px : 0px;}
+                screenshot := ShortcutRow {label: "Screenshot"; value: root.screenshot-hotkey; busy: root.shortcuts-busy || root.folder-busy;}
+                history := ShortcutRow {label: "History"; value: root.history-hotkey; busy: root.shortcuts-busy || root.folder-busy;}
+                full := ShortcutRow {label: "Full screenshot"; value: root.full-hotkey; busy: root.shortcuts-busy || root.folder-busy;}
+                gif := ShortcutRow {label: "Record GIF"; value: root.gif-hotkey; busy: root.shortcuts-busy || root.folder-busy;visible: root.gif-recording-supported;height: root.gif-recording-supported ? 34px : 0px;}
                 Text {height: 28px; text: root.shortcut-help; color: #8591a6; font-size: 10px;}
                 HorizontalLayout {
                     height: 30px; spacing: 8px;
                     Rectangle {
                         min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; background: reset.has-hover ? #2c394c : #222d3d;
                         Text {text: "Restore defaults"; color: #b6c5da; font-size: 11px; horizontal-alignment: center; vertical-alignment: center;}
-                        reset := TouchArea {enabled: !root.shortcuts-busy;clicked => {screenshot.value = "Alt+Shift+S";history.value = "Alt+Shift+V";full.value = "Alt+Shift+F";gif.value = "Alt+Shift+G";}}
+                        reset := TouchArea {enabled: !root.shortcuts-busy && !root.folder-busy;clicked => {screenshot.value = "Alt+Shift+S";history.value = "Alt+Shift+V";full.value = "Alt+Shift+F";gif.value = "Alt+Shift+G";}}
                     }
                     Rectangle {
                         min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; border-width: 1px; border-color: #335782; background: apply.has-hover ? #234774 : #162f55;
                         Text {text: root.shortcuts-busy ? "Saving…" : "Apply shortcuts"; color: #d6e7ff; font-size: 11px; horizontal-alignment: center; vertical-alignment: center;}
-                        apply := TouchArea {enabled: !root.shortcuts-busy;clicked => {root.configure-shortcuts(screenshot.value,history.value,full.value,gif.value);}}
+                        apply := TouchArea {enabled: !root.shortcuts-busy && !root.folder-busy;clicked => {root.configure-shortcuts(screenshot.value,history.value,full.value,gif.value);}}
                     }
                 }
             }
         }
         if root.shortcut-detail != "" : Text {text: root.shortcut-detail; color: #aabbd2; font-size: 10px; wrap: word-wrap;}
         Rectangle {
-            height: 28px; border-radius: 5px; background: folder-touch.has-hover ? #25344a : #1b2737;
-            Text { text: "Open captures folder ↗"; color: #adc8ed; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
-            folder-touch := TouchArea { clicked => { root.open-folder(); } }
+            height: 166px; border-radius: 9px; border-width: 1px; border-color: #2d3542; background: #191f28;
+            VerticalLayout {
+                padding: 14px; spacing: 8px;
+                Text {height: 18px; text: "Save location"; color: #e0e5ef; font-size: 12px; font-weight: 600;}
+                Rectangle {
+                    height: 30px; background: #111923; border-radius: 6px; border-width: 1px; border-color: #354050;
+                    Text {x: 10px; width: parent.width - 20px; height: parent.height; vertical-alignment: center; text: root.capture-folder; color: #b6c5da; font-size: 10px; overflow: elide;}
+                }
+                Text {height: 28px; text: "New captures only; existing files stay in place.\nScreenshots and GIFs use separate subfolders."; color: #8591a6; font-size: 10px; wrap: word-wrap;}
+                HorizontalLayout {
+                    height: 30px; spacing: 8px;
+                    Rectangle {
+                        min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; background: folder-touch.has-hover ? #2c394c : #222d3d;
+                        Text {text: "Open folder ↗"; color: #b6c5da; font-size: 10px; horizontal-alignment: center; vertical-alignment: center;}
+                        folder-touch := TouchArea {enabled: !root.folder-busy;clicked => {root.open-folder();}}
+                    }
+                    Rectangle {
+                        min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; background: default-folder.has-hover ? #2c394c : #222d3d; opacity: default-folder.enabled ? 1 : 0.45;
+                        Text {text: "Use default"; color: #b6c5da; font-size: 10px; horizontal-alignment: center; vertical-alignment: center;}
+                        default-folder := TouchArea {enabled: !root.folder-busy && !root.shortcuts-busy && root.capture-folder-custom;clicked => {root.reset-capture-folder();}}
+                    }
+                    Rectangle {
+                        min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; border-radius: 6px; border-width: 1px; border-color: #335782; background: choose-folder.has-hover ? #234774 : #162f55;
+                        Text {text: root.folder-busy ? "Saving…" : "Change…"; color: #d6e7ff; font-size: 10px; horizontal-alignment: center; vertical-alignment: center;}
+                        choose-folder := TouchArea {enabled: !root.folder-busy && !root.shortcuts-busy;clicked => {root.choose-capture-folder();}}
+                    }
+                }
+            }
         }
+        if root.folder-detail != "" : Text {text: root.folder-detail; color: #aabbd2; font-size: 10px; wrap: word-wrap;}
         Rectangle { vertical-stretch: 1; background: transparent; }
         Rectangle {
             height: 30px; border-radius: 6px; border-width: 1px; border-color: #613b4a; background: clear-touch.has-hover ? #422633 : #2b202b;

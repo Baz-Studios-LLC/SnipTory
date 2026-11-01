@@ -1,6 +1,6 @@
 [package]
 name = "sniptory"
-version = "0.0.15"
+version = "0.0.16"
 license = "MIT"
 authors = ["Baz Studios LLC"]
 repository = "https://github.com/Baz-Studios-LLC/SnipTory"
@@ -22,6 +22,7 @@ gif = "0.14"
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-18", "raw-window-handle-06"] }
 raw-window-handle = "0.6"
 velopack = "=1.2.161"
+rfd = { version = "0.17.2", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [

@@ -672,6 +672,8 @@ fn start_recording(region: RECT) {
         (s.bridge.clone(), s.ui.clone(), s.owner)
     });
     let result = crate::settings::root().and_then(|root| {
+        let folder = crate::settings::load(&root).capture_root(&root);
+        let root = crate::settings::prepare_capture_folder(&folder, false)?;
         crate::recording::start(region, root, move |result| {
             bridge.send(Command::RecordingFinished(result))
         })

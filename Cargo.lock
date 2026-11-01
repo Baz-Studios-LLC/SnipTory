@@ -4119,6 +4119,7 @@ dependencies = [
  "slint-build",
  "tokio",
  "tray-icon",
+ "url",
  "velopack",
  "windows",
  "winresource",

@@ -43,6 +43,7 @@ fs2 = "0.4.3"
 ashpd = { version = "0.13.13", default-features = false, features = ["tokio", "screenshot", "global_shortcuts"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 futures-util = "0.3"
+url = "2"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
 [build-dependencies]

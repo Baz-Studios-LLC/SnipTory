@@ -213,8 +213,7 @@ async fn screenshot(history: &History, full: bool) -> Result<()> {
         .send()
         .await?
         .response()?;
-    let path = response
-        .uri()
+    let path = url::Url::parse(response.uri().as_str())?
         .to_file_path()
         .map_err(|_| anyhow::anyhow!("Screenshot portal returned a non-local image"))?;
     let pixels = image::open(&path)?.to_rgba8();
@@ -497,7 +496,7 @@ pub fn run() -> Result<()> {
                         }
                         Job::Settings(mut p) => {
                             let old = settings::load(&worker_root);
-                            p.capture_folder = old.capture_folder;
+                            p.capture_folder = old.capture_folder.clone();
                             p.paste_on_select = false;
                             let result = startup(p.launch_at_sign_in)
                                 .and_then(|_| settings::save(&worker_root, &p));

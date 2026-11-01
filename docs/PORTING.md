@@ -1,10 +1,8 @@
 # macOS and Bazzite preparation
 
 The established application is Windows-based. Shared code is extracted into a
-portable Rust library, with CI for Linux, Apple Silicon, and Intel Macs. A first
-macOS frontend is now being compiled and packaged for v014; see
-[Mac setup and test scope](MACOS.md). Linux/Bazzite still has no runnable desktop
-frontend. Shared core CI does not establish desktop feature parity.
+portable Rust library, with CI for Linux, Apple Silicon, and Intel Macs. macOS frontend is compiled and packaged for both architectures; see
+[Mac setup and test scope](MACOS.md). The first Linux frontend targets **Bazzite GNOME / Wayland** in v017; see [Linux setup and test scope](LINUX.md). Native CI does not establish desktop feature parity.
 
 ## What is ready to reuse
 
@@ -36,8 +34,7 @@ cargo test --locked --lib
 
 The diagnostic script reports architecture, desktop/session, tool availability,
 and Linux portal interface versions without taking a screenshot or changing
-settings. On macOS/Linux use `--lib`: `cargo run`, the Windows binary, and
-`scripts/Package.ps1` are not ported yet.
+settings. `cargo run` selects the host frontend. Use `scripts/Package-Mac.sh` or `scripts/Package-Linux.sh` on their native hosts; `scripts/Package.ps1` remains Windows-specific.
 
 ## Native implementation order
 
@@ -75,8 +72,7 @@ other platforms with success-returning placeholder capture/clipboard APIs.
 
 ## Bazzite / Wayland decisions and machine checks
 
-Bazzite has KDE and GNOME variants; verify the user's actual desktop/session
-instead of assuming one. See [Bazzite's variants](https://docs.bazzite.gg/General/FAQ/).
+The current user target is Bazzite GNOME on Wayland (updated from the earlier KDE target). See [Bazzite's variants](https://docs.bazzite.gg/General/FAQ/).
 
 - Start with the [Screenshot portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Screenshot.html).
 - Use [ScreenCast](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)

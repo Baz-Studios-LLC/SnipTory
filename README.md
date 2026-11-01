@@ -26,7 +26,7 @@ Application binaries install under `%LOCALAPPDATA%\BazStudios.SnipTory\`. Captur
 
 The shared library and Slint UI sources have cross-platform CI. A macOS frontend
 now compiles and packages on both Mac architectures, with on-device testing still
-required. Linux/Bazzite native integration remains pending. See [the porting
+required. The Linux frontend targets Bazzite GNOME / Wayland and packages as an AppImage. See [Linux setup and limitations](docs/LINUX.md), [the porting
 guide](docs/PORTING.md) and [Mac testing guide](docs/MACOS.md).
 
 Requires stable Rust (1.92+), the `x86_64-pc-windows-msvc` target, Visual Studio C++ Build Tools, and the Windows SDK.
